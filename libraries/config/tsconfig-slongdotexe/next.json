@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Next.js",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "target": "es6",
+    "allowJs": true,
+    "incremental": true,
+    "jsx": "preserve"
+  },
+  "exclude": [
+    "${configDir}/node_modules",
+    "${configDir}/out",
+    "${configDir}/dist"
+  ],
+  "include": ["${configDir}/src/**/*"]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@slongdotexe/tsconfig",
+  "version": "0.0.2",
+  "main": "base.json",
+  "author": "Sean L",
+  "license": "MIT",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}

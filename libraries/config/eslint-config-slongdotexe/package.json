@@ -1,0 +1,27 @@
+{
+  "name": "@slongdotexe/eslint-config",
+  "version": "0.0.2",
+  "main": "base.js",
+  "author": "Sean L",
+  "license": "MIT",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "peerDependencies": {
+    "@shopify/eslint-plugin": "^44.0.0",
+    "@slongdotexe/eslint-config": "~0.0.1",
+    "@slongdotexe/tsconfig": "~0.0.1",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "eslint-config-airbnb": "^19.0.4",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-config-universe": "^12.1.0",
+    "eslint-plugin-eslint-comments": "^3.2.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-prettier": "^5.2.1",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^4.6.2"
+  }
+}

@@ -1,0 +1,41 @@
+name: Publish Packages to GitHub Packages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Setup Node
+        uses: actions/checkout@v4
+
+      - name: Enable CorePack
+        run: corepack enable
+
+      - name: Set Registry Credentials
+        run: yarn config set 'npmRegistries["//npm.pkg.github.com"].npmAuthToken' ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node & Registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@slongdotexe'
+
+      - name: Publish TSConfig
+        run: yarn workspace @slongdotexe/tsconfig npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish ESLint Configuration
+        run: yarn workspace @slongdotexe/eslint-config npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

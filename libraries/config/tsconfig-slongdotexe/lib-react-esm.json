@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Library CJS",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "declaration": true,
+    "jsx": "react",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "ES6",
+    "noEmit": false,
+    "outDir": "${configDir}/pack/esm",
+    "rootDir": "${configDir}/src",
+    "target": "ES6"
+  },
+  "exclude": [
+    "${configDir}/node_modules",
+    "${configDir}/out",
+    "${configDir}/dist",
+    "${configDir}/src/**/*.test.*",
+    "{configDir}/src/**/*.spec.*",
+    "{configDir}/src/**/*.stories.*"
+  ],
+  "include": ["${configDir}/src/**/*"]
+}

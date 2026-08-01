@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "React",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "jsx": "react",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "rootDir": "${configDir}/src"
+  },
+  "exclude": [
+    "${configDir}/node_modules",
+    "${configDir}/out",
+    "${configDir}/dist"
+  ],
+  "include": ["${configDir}/src/**/*"]
+}

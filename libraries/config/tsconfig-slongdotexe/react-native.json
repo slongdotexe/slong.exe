@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "React Native",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "jsx": "react-native",
+    "lib": ["dom", "dom.iterable", "esnext"]
+  },
+  "exclude": [
+    "${configDir}/node_modules",
+    "${configDir}/out",
+    "${configDir}/dist"
+  ],
+  "include": ["${configDir}/src/**/*"]
+}

@@ -1,0 +1,261 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: NextJS Slongdotexe App using Lambda Web Functions
+
+Parameters:
+  Environment:
+    Type: String
+    Default: ephemeral
+    AllowedValues: [ephemeral, development, production]
+  LogLevel:
+    Type: String
+    Default: INFO
+  ApplicationPath:
+    Type: String
+    Default: applications/nextjs-slongdotexe
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, production]
+
+Resources:
+  IncrementalCacheBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  IncrementalCacheBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref IncrementalCacheBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt IncrementalCacheBucket.Arn
+              - !Sub ${IncrementalCacheBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  CacheTagTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  CacheRevalidationDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      FifoQueue: true
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600
+
+  CacheRevalidationQueue:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      FifoQueue: true
+      SqsManagedSseEnabled: true
+      # At least six times the consumer timeout.
+      VisibilityTimeout: 180
+      MessageRetentionPeriod: 345600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt CacheRevalidationDeadLetterQueue.Arn
+        maxReceiveCount: 5
+
+  CacheRevalidationLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-cache-revalidation
+      RetentionInDays: 90
+
+  CacheRevalidationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: cache-revalidation-consumer
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+                Resource: !GetAtt CacheRevalidationQueue.Arn
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt CacheRevalidationLogGroup.Arn
+              - Effect: Allow
+                Action: dynamodb:UpdateItem
+                Resource: !GetAtt CacheTagTable.Arn
+
+  CacheRevalidationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-cache-revalidation
+      Runtime: nodejs24.x
+      CodeUri: out/web-function/
+      Handler: !Sub ${ApplicationPath}/src/cache/worker.handler
+      Role: !GetAtt CacheRevalidationRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      LoggingConfig:
+        LogGroup: !Ref CacheRevalidationLogGroup
+      Environment:
+        Variables:
+          CACHE_TABLE_NAME: !Ref CacheTagTable
+          CACHE_KEY_PREFIX: !Ref AWS::StackName
+      Events:
+        Revalidate:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt CacheRevalidationQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            ScalingConfig:
+              MaximumConcurrency: 5
+
+  # CacheRevalidationDeadLetterAlarm:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmDescription: Cache revalidation exhausted retries; inspect and redrive the FIFO DLQ.
+  #     Namespace: AWS/SQS
+  #     MetricName: ApproximateNumberOfMessagesVisible
+  #     Dimensions:
+  #       - Name: QueueName
+  #         Value: !GetAtt CacheRevalidationDeadLetterQueue.QueueName
+  #     Statistic: Maximum
+  #     Period: 60
+  #     EvaluationPeriods: 1
+  #     Threshold: 0
+  #     ComparisonOperator: GreaterThanThreshold
+  #     TreatMissingData: notBreaching
+
+  WebAppRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: aurora-starter-runtime
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                # Web Functions write locally before centralizing, even in HomeRegion.
+                Resource:
+                  - !GetAtt WebAppLogGroup.Arn
+                  - !GetAtt WebAppLocalLogGroup.Arn
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource: !Sub ${IncrementalCacheBucket.Arn}/${AWS::StackName}/*
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: !GetAtt CacheTagTable.Arn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt CacheRevalidationQueue.Arn
+
+  WebAppLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-web
+      RetentionInDays: 90
+
+  WebAppLocalLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      LogGroupName: !Sub ${WebAppLogGroup}.local
+      RetentionInDays: 90
+
+  WebAppFunction:
+    Type: AWS::Serverless::WebFunction
+    Properties:
+      # Web Function names are account-wide, so include the region as well as the stack.
+      FunctionName: !Sub ${AWS::StackName}-${AWS::Region}-web
+      Runtime: nodejs24.x
+      CodeUri: out/web-function/
+      EntryPoint: !Sub ${ApplicationPath}/server.js
+      AuthType: ApplicationManaged
+      EndpointType: HomeRegion
+      AutoDeploymentMode: LatestRevision
+      ExecutionRoleArn: !GetAtt WebAppRole.Arn
+      Timeout: 30
+      LoggingConfig:
+        LogGroup: !Ref WebAppLogGroup
+        ApplicationLogLevel: !Ref LogLevel
+        SystemLogLevel: INFO
+      EnvironmentVariables:
+        NODE_OPTIONS: !Sub --require ./${ApplicationPath}/src/web-function-entrypoint/index.js
+        CACHE_BUCKET_NAME: !Ref IncrementalCacheBucket
+        CACHE_TABLE_NAME: !Ref CacheTagTable
+        CACHE_KEY_PREFIX: !Ref AWS::StackName
+        CACHE_REVALIDATION_QUEUE_URL: !Ref CacheRevalidationQueue
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: INFO
+      Tags:
+        Environment: !Ref Environment
+
+Outputs:
+  IncrementalCacheBucketName:
+    Value: !Ref IncrementalCacheBucket
+  CacheTagTableName:
+    Value: !Ref CacheTagTable
+  CacheRevalidationQueueUrl:
+    Value: !Ref CacheRevalidationQueue
+  CacheRevalidationDeadLetterQueueUrl:
+    Value: !Ref CacheRevalidationDeadLetterQueue
+  WebAppUrl:
+    Value: !Sub https://${WebAppFunctionEndpoint.DomainName}
+  WebAppLogGroupName:
+    Value: !Ref WebAppLogGroup
+  WebAppLocalLogGroupName:
+    Description: Regional logs available before centralization completes.
+    Value: !Ref WebAppLocalLogGroup

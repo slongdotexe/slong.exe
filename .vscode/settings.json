@@ -1,4 +1,7 @@
 {
   "eslint.validate": ["javascript", "javascriptreact", "typescript", "typescriptreact"],
-  "eslint.workingDirectories": [{ "directory": ".", "changeProcessCWD": true }]
+  "aws.cloudformation.diagnostics.cfnLint.path": "/opt/homebrew/bin/cfn-lint",
+  "files.associations": {
+    "**/applications/nextjs-slongdotexe/template.yaml": "cloudformation"
+  },
 }

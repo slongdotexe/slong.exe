@@ -21,6 +21,7 @@
     "typescript-eslint": "^8.38.0"
   },
   "workspaces": [
+    "./applications/*",
     "./libraries/*"
   ]
 }

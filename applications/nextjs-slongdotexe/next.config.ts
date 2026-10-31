@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import { fileURLToPath } from "node:url";
 
 const cacheHandlerPath = fileURLToPath(
-  new URL("./src/cache/use-cache-handler.ts", import.meta.url),
+  new URL("./src/cache/use-cache-handler.mts", import.meta.url),
 );
 
 const nextConfig: NextConfig = {

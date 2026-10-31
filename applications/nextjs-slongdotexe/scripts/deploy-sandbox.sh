@@ -33,7 +33,7 @@ cp -R "$APP/.next/static" "$ARTIFACT/$APP/.next/static"
 cp -R "$APP/public" "$ARTIFACT/$APP/public"
 find "$ARTIFACT" -type f \( -name '.env' -o -name '.env.*' \) -delete
 
-for packaged_file in server.js web-function-entrypoint.mts src/cache/handler.ts src/cache/use-cache-handler.ts src/cache/runtime.mts src/cache/worker.mjs src/utils/observability.mts; do
+for packaged_file in server.js web-function-entrypoint.mts src/cache/handler.ts src/cache/use-cache-handler.mts src/cache/runtime.mts src/cache/worker.mjs src/utils/observability.mts; do
   if [[ ! -f "$ARTIFACT/$APP/$packaged_file" ]]; then
     echo "ERROR: Required runtime file missing from artifact: $APP/$packaged_file" >&2
     exit 1

@@ -39,7 +39,7 @@ Resources:
         TimeoutSeconds: 30
         EnvironmentVariables:
           AWS_LAMBDA_NODEJS_ENTRYPOINT: !Sub ${ApplicationPath}/server.js
-          NODE_OPTIONS: !Sub --require ./${ApplicationPath}/src/web-function-entrypoint/index.js
+          NODE_OPTIONS: !Sub --require ./${ApplicationPath}/web-function-entrypoint.cjs
           CACHE_BUCKET_NAME:
             Fn::ImportValue: !Sub ${DevelopmentStackName}-PreviewCacheBucketName
           CACHE_TABLE_NAME:

@@ -10,18 +10,23 @@ exports.handler = async (event) => {
       continue;
     }
     try {
-      const { tag, invalidatedAt } = JSON.parse(record.body);
+      const { tag, invalidatedAt, prefix = process.env.CACHE_KEY_PREFIX } = JSON.parse(record.body);
+      const previewPrefix = process.env.CACHE_PREVIEW_PREFIX;
       if (
         typeof tag !== "string" ||
         !tag ||
         !Number.isSafeInteger(invalidatedAt) ||
-        invalidatedAt < 0
+        invalidatedAt < 0 ||
+        typeof prefix !== "string" ||
+        (prefix !== process.env.CACHE_KEY_PREFIX &&
+          !(previewPrefix && prefix.startsWith(previewPrefix) &&
+            /^[0-9]+$/.test(prefix.slice(previewPrefix.length))))
       ) {
         throw new Error("Invalid queue message");
       }
       const config = {
         table: process.env.CACHE_TABLE_NAME,
-        prefix: process.env.CACHE_KEY_PREFIX,
+        prefix,
       };
       if (!config.table || !config.prefix)
         throw new Error("Missing tag store configuration");

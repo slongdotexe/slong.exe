@@ -7,13 +7,13 @@ const cacheHandlerPath = fileURLToPath(
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  outputFileTracingRoot: fileURLToPath(new URL("../../", import.meta.url)),
   cacheComponents: true,
   outputFileTracingIncludes: {
     "/*": [
       "./src/cache/*.ts",
       "./src/cache/*.mts",
       "./src/cache/worker.mjs",
-      "./src/utils/observability.mts",
       "./web-function-entrypoint.mts",
     ],
   },

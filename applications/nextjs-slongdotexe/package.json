@@ -3,20 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_OPTIONS=\"--import ./web-function-entrypoint.mts\" next dev",
+    "dev": "next dev",
     "build": "next build",
-    "start": "NODE_OPTIONS=\"--import ./web-function-entrypoint.mts\" next start",
+    "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "@aws-lambda-powertools/logger": "^2.36.0",
-    "@aws-lambda-powertools/tracer": "^2.36.0",
     "@aws-sdk/client-dynamodb": "^3.1156.0",
     "@aws-sdk/client-s3": "^3.1156.0",
     "@aws-sdk/client-sqs": "^3.1156.0",
-    "@aws-sdk/client-xray": "^3.1156.0",
+    "@aws/aws-distro-opentelemetry-node-autoinstrumentation": "^0.13.0",
+    "@opentelemetry/api": "1.9.1",
     "aws-rum-web": "^3.2.1",
-    "aws-xray-sdk-core": "^3.12.0",
     "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8"

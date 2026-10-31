@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_OPTIONS=\"--require ./web-function-entrypoint.cjs\" next dev",
+    "dev": "NODE_OPTIONS=\"--import ./web-function-entrypoint.mts\" next dev",
     "build": "next build",
-    "start": "NODE_OPTIONS=\"--require ./web-function-entrypoint.cjs\" next start",
+    "start": "NODE_OPTIONS=\"--import ./web-function-entrypoint.mts\" next start",
     "lint": "eslint"
   },
   "dependencies": {

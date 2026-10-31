@@ -1,5 +1,3 @@
-// Node --require preload, included in the standalone package by Next's tracing.
-// Set the listener address before Next's generated standalone server reads it.
 const endpoint = process.env.AWS_LAMBDA_HTTP_ENDPOINT;
 if (endpoint) {
   const address = new URL(`http://${endpoint}`);

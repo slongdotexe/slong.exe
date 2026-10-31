@@ -33,7 +33,7 @@ cp -R "$APP/.next/static" "$ARTIFACT/$APP/.next/static"
 cp -R "$APP/public" "$ARTIFACT/$APP/public"
 find "$ARTIFACT" -type f \( -name '.env' -o -name '.env.*' \) -delete
 
-for packaged_file in server.js web-function-entrypoint.cjs src/cache/handler.cjs src/cache/use-cache-handler.cjs src/cache/runtime.cjs src/cache/worker.cjs; do
+for packaged_file in server.js web-function-entrypoint.mts src/cache/handler.ts src/cache/use-cache-handler.ts src/cache/runtime.mts src/cache/worker.mjs src/utils/observability.mts; do
   if [[ ! -f "$ARTIFACT/$APP/$packaged_file" ]]; then
     echo "ERROR: Required runtime file missing from artifact: $APP/$packaged_file" >&2
     exit 1
@@ -41,7 +41,7 @@ for packaged_file in server.js web-function-entrypoint.cjs src/cache/handler.cjs
 done
 
 AWS_LAMBDA_HTTP_ENDPOINT=127.0.0.1:8080 \
-  node --require "$PWD/$ARTIFACT/$APP/web-function-entrypoint.cjs" \
+  node --import "$PWD/$ARTIFACT/$APP/web-function-entrypoint.mts" \
   -e 'if (process.env.HOSTNAME !== "127.0.0.1" || process.env.PORT !== "8080") throw new Error("Web Function preload failed");'
 
 echo "Deploying shared development infrastructure ($REGION)..."

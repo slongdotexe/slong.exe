@@ -1,3 +1,3 @@
-import observability from "./observability.cjs";
+import observability from "./observability.mts";
 
 export const logger = observability.logger;

@@ -4,7 +4,11 @@ import { Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { Logger } from "@aws-lambda-powertools/logger";
 import { Tracer } from "@aws-lambda-powertools/tracer";
 import xray from "aws-xray-sdk-core";
-import { XRayClient, PutTraceSegmentsCommand } from "@aws-sdk/client-xray";
+import {
+  XRayClient,
+  PutTraceSegmentsCommand,
+  type PutTraceSegmentsCommandOutput,
+} from "@aws-sdk/client-xray";
 import type { Instrumentation } from "next";
 
 type RequestSegment = xray.Segment & {
@@ -30,9 +34,9 @@ type TraceDocument = {
 type RegisterOptions = {
   sampleRate?: number;
   traceClient?: {
-    send(command: PutTraceSegmentsCommand): Promise<{
-      UnprocessedTraceSegments?: unknown[];
-    }>;
+    send(
+      command: PutTraceSegmentsCommand,
+    ): Promise<Pick<PutTraceSegmentsCommandOutput, "UnprocessedTraceSegments">>;
   };
 };
 
@@ -135,10 +139,17 @@ function createObservability() {
                 )
                 .then((result) => {
                   if (result.UnprocessedTraceSegments?.length)
-                    baseLogger.warn("X-Ray rejected trace segments");
+                    baseLogger.warn("X-Ray rejected trace segments", {
+                      error_codes: result.UnprocessedTraceSegments.map(
+                        (segment) => segment.ErrorCode,
+                      ),
+                    });
                 })
-                .catch(() => {
-                  baseLogger.warn("X-Ray trace export failed");
+                .catch((error: unknown) => {
+                  baseLogger.warn("X-Ray trace export failed", {
+                    error_type:
+                      error instanceof Error ? error.name : "UnknownError",
+                  });
                 })
                 .finally(() => {
                   pendingExports.delete(pending);
@@ -151,6 +162,17 @@ function createObservability() {
         }
       };
     }
+
+    baseLogger.info("Tracing initialized", {
+      tracing_enabled: enabled,
+      sample_rate: sampleRate,
+      export_transport: enabled
+        ? process.env.AWS_LAMBDA_HTTP_ENDPOINT
+          ? "xray-api"
+          : "xray-sdk"
+        : "disabled",
+      region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION,
+    });
 
     const originalEmit = Server.prototype.emit;
     Server.prototype.emit = function emit(

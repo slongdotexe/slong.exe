@@ -7,6 +7,7 @@ const cacheHandlerPath = fileURLToPath(
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  cacheComponents: true,
   outputFileTracingIncludes: {
     "/*": [
       "./src/cache/*.ts",
@@ -18,7 +19,6 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     isrFlushToDisk: false,
-    useCache: true,
   },
   cacheHandlers: {
     default: cacheHandlerPath,

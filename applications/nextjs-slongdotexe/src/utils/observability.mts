@@ -4,6 +4,7 @@ import { Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { Logger } from "@aws-lambda-powertools/logger";
 import { Tracer } from "@aws-lambda-powertools/tracer";
 import xray from "aws-xray-sdk-core";
+import type { InitializeHandler, InitializeHandlerOptions } from "@smithy/types";
 import {
   XRayClient,
   PutTraceSegmentsCommand,
@@ -37,6 +38,19 @@ type RegisterOptions = {
     send(
       command: PutTraceSegmentsCommand,
     ): Promise<Pick<PutTraceSegmentsCommandOutput, "UnprocessedTraceSegments">>;
+  };
+};
+
+type TraceContextMiddleware = <Input extends object, Output extends object>(
+  next: InitializeHandler<Input, Output>,
+) => InitializeHandler<Input, Output>;
+
+type TraceableClient = {
+  middlewareStack: {
+    add(
+      middleware: TraceContextMiddleware,
+      options: InitializeHandlerOptions & { override: boolean },
+    ): void;
   };
 };
 
@@ -99,7 +113,8 @@ function createObservability() {
     if (registered) return;
     registered = true;
     const enabled = tracer.isTracingEnabled();
-    const configuredRate = Number(process.env.XRAY_SAMPLE_RATE || "0.05");
+    const defaultSampleRate = process.env.ENVIRONMENT === "development" ? "1" : "0.05";
+    const configuredRate = Number(process.env.XRAY_SAMPLE_RATE || defaultSampleRate);
     const sampleRate = options.sampleRate ?? configuredRate;
     if (!Number.isFinite(sampleRate) || sampleRate < 0 || sampleRate > 1) {
       registered = false;
@@ -138,12 +153,15 @@ function createObservability() {
                   ),
                 )
                 .then((result) => {
-                  if (result.UnprocessedTraceSegments?.length)
+                  if (result.UnprocessedTraceSegments?.length) {
                     baseLogger.warn("X-Ray rejected trace segments", {
                       error_codes: result.UnprocessedTraceSegments.map(
                         (segment) => segment.ErrorCode,
                       ),
                     });
+                  } else {
+                    baseLogger.debug("X-Ray trace exported", { trace_id: segment.trace_id });
+                  }
                 })
                 .catch((error: unknown) => {
                   baseLogger.warn("X-Ray trace export failed", {
@@ -203,6 +221,7 @@ function createObservability() {
           /(?:^|;)\s*Sampled=0(?:;|$)/.test(header) ||
           Math.random() >= sampleRate;
         segment.addAnnotation("Service", serviceName);
+        segment.addAnnotation("RequestMethod", request.method || "UNKNOWN");
         segment.addAnnotation(
           "Environment",
           process.env.ENVIRONMENT || "local",
@@ -236,6 +255,7 @@ function createObservability() {
               const aborted = !response.writableFinished;
               if (segment) {
                 segment.http!.response = { status: response.statusCode };
+                segment.addAnnotation("ResponseStatus", response.statusCode);
                 if (aborted || response.statusCode >= 500)
                   segment.addFaultFlag();
                 else if (response.statusCode >= 400) segment.addErrorFlag();
@@ -245,6 +265,8 @@ function createObservability() {
               requestLogger.info("HTTP request completed", {
                 method: request.method,
                 status: response.statusCode,
+                trace_sampled: segment ? !segment.notTraced : false,
+                upstream_sampling: header.match(/(?:^|;)\s*Sampled=([01?])(?:;|$)/)?.[1],
                 duration_ms:
                   Math.round((performance.now() - started) * 100) / 100,
                 aborted,
@@ -263,6 +285,59 @@ function createObservability() {
         );
       });
     };
+  }
+
+  async function traceOperation<Result>(
+    name: string,
+    operation: (segment?: xray.Subsegment) => Promise<Result>,
+  ): Promise<Result> {
+    const requestSegment = context.getStore()?.segment;
+    if (!requestSegment || requestSegment.notTraced) return operation();
+    const parent = xray.getSegment() || requestSegment;
+    const segment = parent.addNewSubsegment(name);
+    return xray.getNamespace().runAndReturn(async () => {
+      xray.setSegment(segment);
+      try {
+        return await operation(segment);
+      } catch (error) {
+        segment.addFaultFlag();
+        segment.addAnnotation(
+          "ErrorType",
+          error instanceof Error ? error.name : "UnknownError",
+        );
+        throw error;
+      } finally {
+        segment.close();
+      }
+    });
+  }
+
+  function captureAWSv3Client<Client extends TraceableClient>(client: Client): Client {
+    tracer.captureAWSv3Client(client);
+    const restoreContext: TraceContextMiddleware = (next) => async (args) => {
+      const requestSegment = context.getStore()?.segment;
+      const active = xray.getSegment();
+      const parent = requestSegment
+        ? active === requestSegment ||
+          (active instanceof xray.Subsegment && active.segment === requestSegment)
+          ? active
+          : requestSegment
+        : active;
+      if (!parent) return next(args);
+      return xray.getNamespace().runAndReturn(() => {
+        xray.setSegment(parent);
+        return next(args);
+      });
+    };
+    client.middlewareStack.add(
+      restoreContext,
+      {
+        name: "RequestTraceContext",
+        step: "initialize",
+        override: true,
+      },
+    );
+    return client;
   }
 
   function recordError(
@@ -286,6 +361,8 @@ function createObservability() {
     serviceName,
     register,
     recordError,
+    traceOperation,
+    captureAWSv3Client,
     flush: () => Promise.allSettled([...pendingExports]),
   };
 }
@@ -302,6 +379,8 @@ export const {
   serviceName,
   register,
   recordError,
+  traceOperation,
+  captureAWSv3Client,
   flush,
 } = observability;
 export default observability;

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { tracer } from "../utils/observability.mts";
+import { captureAWSv3Client } from "../utils/observability.mts";
 import {
   DynamoDBClient,
   GetItemCommand,
@@ -22,11 +22,11 @@ export type CacheConfiguration = TagConfiguration & {
 };
 
 const clientOptions = { maxAttempts: 3 };
-export const s3 = tracer.captureAWSv3Client(new S3Client(clientOptions));
-export const dynamo = tracer.captureAWSv3Client(
+export const s3 = captureAWSv3Client(new S3Client(clientOptions));
+export const dynamo = captureAWSv3Client(
   new DynamoDBClient(clientOptions),
 );
-export const sqs = tracer.captureAWSv3Client(new SQSClient(clientOptions));
+export const sqs = captureAWSv3Client(new SQSClient(clientOptions));
 export const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 export { GetObjectCommand, PutObjectCommand, UpdateItemCommand };

@@ -2,6 +2,7 @@
 const { createHash, randomUUID } = require("node:crypto");
 const { readFileSync } = require("node:fs");
 const { join } = require("node:path");
+const { tracer } = require("../utils/observability.cjs");
 
 const {
   DynamoDBClient,
@@ -16,9 +17,9 @@ const {
 const { SQSClient, SendMessageCommand } = require("@aws-sdk/client-sqs");
 
 const clientOptions = { maxAttempts: 3 };
-const s3 = new S3Client(clientOptions);
-const dynamo = new DynamoDBClient(clientOptions);
-const sqs = new SQSClient(clientOptions);
+const s3 = tracer.captureAWSv3Client(new S3Client(clientOptions));
+const dynamo = tracer.captureAWSv3Client(new DynamoDBClient(clientOptions));
+const sqs = tracer.captureAWSv3Client(new SQSClient(clientOptions));
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 
 function configuration(serverDistDir = join(process.cwd(), ".next/server")) {

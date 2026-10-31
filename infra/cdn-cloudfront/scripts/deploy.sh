@@ -10,7 +10,7 @@ fi
 
 APP_STACK="$1"
 DOMAIN_NAME="$2"
-PROFILE="${3:-${AWS_PROFILE:-okta}}"
+PROFILE="${3:-${AWS_PROFILE:-slongdotexe}}"
 APP_REGION="${AWS_REGION:-ap-southeast-2}"
 STACK_NAME="${CDN_STACK_NAME:-${APP_STACK}-cdn}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

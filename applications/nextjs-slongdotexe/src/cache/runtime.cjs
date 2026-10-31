@@ -92,7 +92,7 @@ async function enqueue(config, tags) {
     await sqs.send(
       new SendMessageCommand({
         QueueUrl: process.env.CACHE_REVALIDATION_QUEUE_URL,
-        MessageBody: JSON.stringify({ tag, invalidatedAt }),
+        MessageBody: JSON.stringify({ tag, invalidatedAt, prefix: config.prefix }),
         MessageGroupId: hash(`${config.prefix}:${tag}`),
         MessageDeduplicationId: randomUUID(),
       }),

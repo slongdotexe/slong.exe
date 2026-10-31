@@ -256,7 +256,7 @@ Resources:
         ApplicationLogLevel: !Ref LogLevel
         SystemLogLevel: INFO
       EnvironmentVariables:
-        NODE_OPTIONS: !Sub --require ./${ApplicationPath}/src/web-function-entrypoint/index.js
+        NODE_OPTIONS: !Sub --require ./${ApplicationPath}/web-function-entrypoint.cjs
         CACHE_BUCKET_NAME: !Ref IncrementalCacheBucket
         CACHE_TABLE_NAME: !Ref CacheTagTable
         CACHE_KEY_PREFIX: !Ref AWS::StackName

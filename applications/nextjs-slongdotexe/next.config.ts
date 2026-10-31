@@ -1,25 +1,27 @@
 import type { NextConfig } from "next";
 import { fileURLToPath } from "node:url";
 
+const cacheHandlerPath = fileURLToPath(
+  new URL("./src/cache/use-cache-handler.mts", import.meta.url),
+);
+
 const nextConfig: NextConfig = {
   output: "standalone",
+  cacheComponents: true,
   outputFileTracingIncludes: {
     "/*": [
-      "./src/cache/handler.cjs",
-      "./src/cache/use-cache-handler.cjs",
-      "./src/cache/runtime.cjs",
-      "./src/cache/worker.cjs",
-      "./web-function-entrypoint.cjs",
+      "./src/cache/*.ts",
+      "./src/cache/*.mts",
+      "./src/cache/worker.mjs",
+      "./src/utils/observability.mts",
+      "./web-function-entrypoint.mts",
     ],
   },
   experimental: {
     isrFlushToDisk: false,
-    useCache: true,
   },
   cacheHandlers: {
-    default: fileURLToPath(
-      new URL("./src/cache/use-cache-handler.cjs", import.meta.url),
-    ),
+    default: cacheHandlerPath,
   },
 };
 

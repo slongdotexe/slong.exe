@@ -20,23 +20,18 @@ lint = true
 watch = true
 
 [default.local_start_api.parameters]
-parameter_overrides = "Environment=ephemeral LogLevel=DEBUG"
+parameter_overrides = "Environment=development LogLevel=DEBUG"
 warm_containers = "EAGER"
 
 [default.local_start_lambda.parameters]
 warm_containers = "EAGER"
 
-[ephemeral.deploy.parameters]
-stack_name = "sam-nextjs-slongdotexe-ephemeral"
-parameter_overrides = "Environment=ephemeral LogLevel=DEBUG"
-capabilities = "CAPABILITY_NAMED_IAM"
-
 [development.deploy.parameters]
 stack_name = "sam-nextjs-slongdotexe-development"
-parameter_overrides = "Environment=development LogLevel=INFO"
+parameter_overrides = "Environment=development LogLevel=INFO CloudFrontDistributionId=E31BQ5JT3K3S0G RumDomainName=development.seanlong.me RumSessionSampleRate=1"
 capabilities = "CAPABILITY_NAMED_IAM"
 
 [production.deploy.parameters]
 stack_name = "sam-nextjs-slongdotexe-production"
-parameter_overrides = "Environment=ephemeral LogLevel=INFO"
+parameter_overrides = "Environment=production LogLevel=INFO"
 capabilities = "CAPABILITY_NAMED_IAM"

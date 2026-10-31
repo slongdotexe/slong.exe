@@ -1,11 +1,15 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
-const { serialize, deserialize } = require("node:v8");
+import { serialize, deserialize } from "node:v8";
+import { S3ServiceException } from "@aws-sdk/client-s3";
+import type {
+  CacheEntry,
+  CacheHandler,
+} from "next/dist/server/lib/cache-handlers/types.js";
+import * as runtime from "./runtime.mts";
 
-const runtime = require("./runtime.cjs");
-
-const pendingSets = new Map();
-const memory = new Map();
-const expiredTags = new Map();
+type StoredEntry = Omit<CacheEntry, "value"> & { value: Buffer };
+const pendingSets = new Map<string, Promise<void>>();
+const memory = new Map<string, StoredEntry>();
+const expiredTags = new Map<string, number>();
 const maxMemoryBytes = 50 * 1024 * 1024;
 let memoryBytes = 0;
 
@@ -17,32 +21,32 @@ function configuration() {
   )
     return null;
   const config = runtime.configuration();
-  // Keep streaming entries separate from the incremental handler's opaque payloads.
   return { ...config, namespace: `${config.namespace}/use-cache` };
 }
 
-function remember(cacheKey, entry) {
-  if (memory.has(cacheKey)) {
-    memoryBytes -= memory.get(cacheKey).value.byteLength;
+function remember(cacheKey: string, entry: StoredEntry) {
+  const previous = memory.get(cacheKey);
+  if (previous) {
+    memoryBytes -= previous.value.byteLength;
     memory.delete(cacheKey);
   }
   if (entry.value.byteLength > maxMemoryBytes) return;
   memory.set(cacheKey, entry);
   memoryBytes += entry.value.byteLength;
   while (memoryBytes > maxMemoryBytes || memory.size > 100) {
-    const oldestKey = memory.keys().next().value;
-    memoryBytes -= memory.get(oldestKey).value.byteLength;
-    memory.delete(oldestKey);
+    const oldest = memory.entries().next().value;
+    if (!oldest) break;
+    memoryBytes -= oldest[1].value.byteLength;
+    memory.delete(oldest[0]);
   }
 }
 
-// Next.js 16 CacheHandler. Export an object, not the incremental handler class.
-module.exports = {
+const handler: CacheHandler = {
   async get(cacheKey, softTags = []) {
     await pendingSets.get(cacheKey);
     try {
       const config = configuration();
-      let entry;
+      let entry: StoredEntry | undefined;
       if (config) {
         const response = await runtime.s3.send(
           new runtime.GetObjectCommand({
@@ -50,9 +54,10 @@ module.exports = {
             Key: runtime.objectKey(config, cacheKey),
           }),
         );
+        if (!response.Body) return undefined;
         entry = deserialize(
           Buffer.from(await response.Body.transformToByteArray()),
-        );
+        ) as StoredEntry;
       } else {
         entry = memory.get(cacheKey);
       }
@@ -66,44 +71,38 @@ module.exports = {
         return undefined;
       if (config && (await runtime.invalidated(config, tags, entry.timestamp)))
         return undefined;
-
+      const value = entry.value;
       return {
         ...entry,
-        value: new ReadableStream({
+        value: new ReadableStream<Uint8Array>({
           start(controller) {
-            controller.enqueue(new Uint8Array(entry.value));
+            controller.enqueue(new Uint8Array(value));
             controller.close();
           },
         }),
       };
     } catch (error) {
       if (
-        error.name !== "NoSuchKey" &&
-        error.$metadata?.httpStatusCode !== 404
+        !(error instanceof S3ServiceException) ||
+        (error.name !== "NoSuchKey" && error.$metadata.httpStatusCode !== 404)
       ) {
-        console.error("use cache read failed", { error: error.name });
+        console.error("use cache read failed", {
+          error: error instanceof Error ? error.name : "UnknownError",
+        });
       }
       return undefined;
     }
   },
 
   async set(cacheKey, pendingEntry) {
-    let finish;
-    const pending = new Promise((resolve) => {
-      finish = resolve;
-    });
+    const { promise: pending, resolve: finish } = Promise.withResolvers<void>();
     pendingSets.set(cacheKey, pending);
     try {
       const entry = await pendingEntry;
-      // Only report tags supplied with this entry. No route is inferred from
-      // earlier reads: Next normally supplies soft tags to get(), not set().
-
       const value = Buffer.from(await new Response(entry.value).arrayBuffer());
       const stored = { ...entry, value };
       const config = configuration();
       if (config) {
-        // Consume the entire stream before the atomic PutObject. Never persist a
-        // partial render, or retain the request's stream/promise in a local cache.
         await runtime.s3.send(
           new runtime.PutObjectCommand({
             Bucket: config.bucket,
@@ -113,33 +112,29 @@ module.exports = {
           }),
         );
       } else {
-        // Local development without AWS resources still exercises this adapter.
         remember(cacheKey, stored);
       }
     } catch (error) {
-      console.error("use cache write failed", { error: error.name });
+      console.error("use cache write failed", {
+        error: error instanceof Error ? error.name : "UnknownError",
+      });
     } finally {
       finish();
       if (pendingSets.get(cacheKey) === pending) pendingSets.delete(cacheKey);
     }
   },
 
-  async refreshTags() {
-    // No stale local replica: get() reads shared timestamps consistently on demand.
-  },
-
-  async getExpiration(tags) {
-    // The public contract uses Infinity to pass soft tags through to get().
+  async refreshTags() {},
+  async getExpiration() {
     return Infinity;
   },
-
-  async updateTags(tags, _durations) {
+  async updateTags(tags) {
     if (!tags.length) return;
     const config = configuration();
     if (config) await runtime.enqueue(config, tags);
-    // The calling process sees its own invalidation immediately; other instances
-    // see it once the FIFO worker updates shared DynamoDB timestamps.
     const timestamp = Date.now();
     for (const tag of tags) expiredTags.set(tag, timestamp);
   },
 };
+
+export default handler;

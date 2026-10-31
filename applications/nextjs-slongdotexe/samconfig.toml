@@ -1,0 +1,42 @@
+# IMPORTANT: Build artifacts should be environment-agnostic.
+# Only deployment parameters (stack name, Environment, LogLevel, etc.) should vary by environment.
+# Use `sam build` or `sam build --config-env default` to create a portable artifact.
+# Specify the target environment only at deploy time (e.g., `sam deploy --config-env production`).
+#
+# More information about the configuration file can be found here:
+# https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-config.html
+version = 0.1
+
+[default.global.parameters]
+# stack_name is set per-environment or dynamically in CI
+
+[default.build.parameters]
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.sync.parameters]
+watch = true
+
+[default.local_start_api.parameters]
+parameter_overrides = "Environment=ephemeral LogLevel=DEBUG"
+warm_containers = "EAGER"
+
+[default.local_start_lambda.parameters]
+warm_containers = "EAGER"
+
+[ephemeral.deploy.parameters]
+stack_name = "sam-nextjs-slongdotexe-ephemeral"
+parameter_overrides = "Environment=ephemeral LogLevel=DEBUG"
+capabilities = "CAPABILITY_NAMED_IAM"
+
+[development.deploy.parameters]
+stack_name = "sam-nextjs-slongdotexe-development"
+parameter_overrides = "Environment=development LogLevel=INFO"
+capabilities = "CAPABILITY_NAMED_IAM"
+
+[production.deploy.parameters]
+stack_name = "sam-nextjs-slongdotexe-production"
+parameter_overrides = "Environment=ephemeral LogLevel=INFO"
+capabilities = "CAPABILITY_NAMED_IAM"

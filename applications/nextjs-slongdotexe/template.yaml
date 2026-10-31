@@ -325,6 +325,14 @@ Resources:
         SystemLogLevel: INFO
       EnvironmentVariables:
         NODE_OPTIONS: !Sub --import ./${ApplicationPath}/web-function-entrypoint.mts
+        OTEL_SERVICE_NAME: !Sub ${AWS::StackName}-web
+        OTEL_METRICS_EXPORTER: none
+        OTEL_LOGS_EXPORTER: none
+        OTEL_TRACES_EXPORTER: otlp
+        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: !Sub https://xray.${AWS::Region}.amazonaws.com/v1/traces
+        OTEL_TRACES_SAMPLER: !If [IsProduction, parentbased_traceidratio, !Ref 'AWS::NoValue']
+        OTEL_TRACES_SAMPLER_ARG: !If [IsProduction, '0.05', !Ref 'AWS::NoValue']
+        OTEL_RESOURCE_ATTRIBUTES: !Sub 'deployment.environment.name=${Environment},cloud.region=${AWS::Region}'
         CACHE_BUCKET_NAME: !Ref IncrementalCacheBucket
         CACHE_TABLE_NAME: !Ref CacheTagTable
         CACHE_KEY_PREFIX: !Ref AWS::StackName

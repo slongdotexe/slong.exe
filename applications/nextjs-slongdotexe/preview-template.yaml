@@ -40,6 +40,12 @@ Resources:
         EnvironmentVariables:
           AWS_LAMBDA_NODEJS_ENTRYPOINT: !Sub ${ApplicationPath}/server.js
           NODE_OPTIONS: !Sub --import ./${ApplicationPath}/web-function-entrypoint.mts
+          OTEL_SERVICE_NAME: !Sub ${DevelopmentStackName}-${PreviewName}-web
+          OTEL_METRICS_EXPORTER: none
+          OTEL_LOGS_EXPORTER: none
+          OTEL_TRACES_EXPORTER: otlp
+          OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: !Sub https://xray.${AWS::Region}.amazonaws.com/v1/traces
+          OTEL_RESOURCE_ATTRIBUTES: !Sub 'deployment.environment.name=ephemeral,cloud.region=${AWS::Region}'
           CACHE_BUCKET_NAME:
             Fn::ImportValue: !Sub ${DevelopmentStackName}-PreviewCacheBucketName
           CACHE_TABLE_NAME:

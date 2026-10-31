@@ -1,10 +1,16 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import { Server, type IncomingMessage, type ServerResponse } from "node:http";
+import http, {
+  Server,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import https from "node:https";
 import { Logger } from "@aws-lambda-powertools/logger";
 import { Tracer } from "@aws-lambda-powertools/tracer";
 import xray from "aws-xray-sdk-core";
 import type {
+  HttpRequest,
   InitializeHandler,
   InitializeHandlerOptions,
 } from "@smithy/types";
@@ -17,7 +23,12 @@ import type { Instrumentation } from "next";
 
 type RequestSegment = xray.Segment & {
   http?: {
-    request: { method?: string; url: string };
+    request: {
+      method?: string;
+      url: string;
+      client_ip?: string;
+      user_agent?: string;
+    };
     response?: { status: number };
   };
 };
@@ -57,6 +68,72 @@ type TraceableClient = {
   };
 };
 
+const untracedHttpRequest =
+  (http as typeof http & { __request?: typeof http.request }).__request ||
+  http.request;
+const untracedHttpsRequest =
+  (https as typeof https & { __request?: typeof https.request }).__request ||
+  https.request;
+
+function createTraceRequestHandler() {
+  const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 8 });
+  const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 8 });
+  return {
+    metadata: { handlerProtocol: "http/1.1" },
+    destroy() {
+      httpAgent.destroy();
+      httpsAgent.destroy();
+    },
+    handle(request: HttpRequest) {
+      return new Promise<{
+        response: {
+          statusCode: number;
+          headers: Record<string, string>;
+          body: IncomingMessage;
+        };
+      }>((resolve, reject) => {
+        const secure = request.protocol === "https:";
+        const send = secure ? untracedHttpsRequest : untracedHttpRequest;
+        const outgoing = send(
+          {
+            hostname: request.hostname,
+            port: request.port,
+            path: request.path,
+            method: request.method,
+            headers: request.headers,
+            agent: secure ? httpsAgent : httpAgent,
+          },
+          (incoming) => {
+            const headers: Record<string, string> = {};
+            for (const [name, value] of Object.entries(incoming.headers)) {
+              if (value !== undefined) {
+                headers[name] = Array.isArray(value) ? value.join(",") : value;
+              }
+            }
+            resolve({
+              response: {
+                statusCode: incoming.statusCode || 500,
+                headers,
+                body: incoming,
+              },
+            });
+          },
+        );
+        const timeout = setTimeout(() => {
+          outgoing.destroy(
+            Object.assign(new Error("X-Ray export timed out"), {
+              name: "TimeoutError",
+            }),
+          );
+        }, 2000);
+        outgoing.once("close", () => clearTimeout(timeout));
+        outgoing.once("error", reject);
+        outgoing.end(request.body);
+      });
+    },
+  };
+}
+
 function createObservability() {
   const serviceName =
     process.env.POWERTOOLS_SERVICE_NAME || "nextjs-slongdotexe";
@@ -93,19 +170,34 @@ function createObservability() {
     }
   }
 
+  function filterUrl(rawUrl: string): string | undefined {
+    try {
+      const url = new URL(rawUrl);
+      url.username = "";
+      url.password = "";
+      url.hash = "";
+      const allowed = new Set(
+        (process.env.OBSERVABILITY_QUERY_PARAMETER_ALLOWLIST ?? "*")
+          .split(",")
+          .map((name) => name.trim())
+          .filter(Boolean),
+      );
+      if (!allowed.has("*")) {
+        for (const name of new Set(url.searchParams.keys())) {
+          if (!allowed.has(name)) url.searchParams.delete(name);
+        }
+      }
+      return url.toString();
+    } catch {
+      return undefined;
+    }
+  }
+
   function sanitize(document: TraceDocument): TraceDocument {
-    delete document.metadata;
-    delete document.cause;
     if (document.http?.request) {
-      delete document.http.request.client_ip;
       const rawUrl = document.http.request.url;
       if (rawUrl) {
-        try {
-          const url = new URL(rawUrl);
-          document.http.request.url = `${url.protocol}//${url.host}/`;
-        } catch {
-          delete document.http.request.url;
-        }
+        document.http.request.url = filterUrl(rawUrl);
       }
     }
     for (const child of document.subsegments || []) sanitize(child);
@@ -133,7 +225,7 @@ function createObservability() {
         options.traceClient ||
         new XRayClient({
           maxAttempts: 2,
-          requestHandler: { connectionTimeout: 500, requestTimeout: 2000 },
+          requestHandler: createTraceRequestHandler(),
         });
       exportSegment = (segment) => {
         try {
@@ -211,6 +303,27 @@ function createObservability() {
       const [request, response] = args as [IncomingMessage, ServerResponse];
       const requestId = randomUUID();
       const started = performance.now();
+      const forwardedProtocol = request.headers["x-forwarded-proto"];
+      const protocol =
+        typeof forwardedProtocol === "string"
+          ? forwardedProtocol.split(",")[0].trim()
+          : (request.socket as typeof request.socket & { encrypted?: boolean })
+                ?.encrypted
+            ? "https"
+            : "http";
+      const forwardedHost = request.headers["x-forwarded-host"];
+      const host =
+        typeof forwardedHost === "string"
+          ? forwardedHost.split(",")[0].trim()
+          : request.headers.host || serviceName;
+      const requestUrl =
+        filterUrl(`${protocol}://${host}${request.url || "/"}`) ||
+        `${protocol}://${serviceName}/`;
+      const forwardedFor = request.headers["x-forwarded-for"];
+      const clientIp =
+        typeof forwardedFor === "string"
+          ? forwardedFor.split(",")[0].trim()
+          : request.socket?.remoteAddress;
       const header =
         typeof request.headers["x-amzn-trace-id"] === "string"
           ? request.headers["x-amzn-trace-id"]
@@ -230,12 +343,18 @@ function createObservability() {
           Math.random() >= sampleRate;
         segment.addAnnotation("Service", serviceName);
         segment.addAnnotation("RequestMethod", request.method || "UNKNOWN");
+        segment.addAnnotation("RequestPath", new URL(requestUrl).pathname);
         segment.addAnnotation(
           "Environment",
           process.env.ENVIRONMENT || "local",
         );
         segment.http = {
-          request: { method: request.method, url: `http://${serviceName}/` },
+          request: {
+            method: request.method,
+            url: requestUrl,
+            client_ip: clientIp,
+            user_agent: request.headers["user-agent"],
+          },
         };
       }
       const requestLogger = baseLogger.createChild({
@@ -272,6 +391,9 @@ function createObservability() {
               }
               requestLogger.info("HTTP request completed", {
                 method: request.method,
+                url: requestUrl,
+                client_ip: clientIp,
+                user_agent: request.headers["user-agent"],
                 status: response.statusCode,
                 trace_sampled: segment ? !segment.notTraced : false,
                 upstream_sampling: header.match(
@@ -311,6 +433,9 @@ function createObservability() {
         return await operation(segment);
       } catch (error) {
         segment.addFaultFlag();
+        segment.addError(
+          error instanceof Error ? error : new Error(String(error)),
+        );
         segment.addAnnotation(
           "ErrorType",
           error instanceof Error ? error.name : "UnknownError",
@@ -355,8 +480,12 @@ function createObservability() {
   ) {
     const segment = context.getStore()?.segment;
     segment?.addFaultFlag();
+    segment?.addError(
+      error instanceof Error ? error : new Error(String(error)),
+    );
     segment?.addAnnotation("Route", details.routePath);
     logger.error("Next.js request failed", {
+      error,
       errorType: error instanceof Error ? error.name : "UnknownError",
       method: request.method,
       route: details.routePath,

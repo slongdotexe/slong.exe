@@ -1,21 +1,32 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: NextJS Slongdotexe App using Lambda Web Functions
+Description: Isolated development or production NextJS application and shared development preview infrastructure.
 
 Parameters:
   Environment:
     Type: String
-    Default: ephemeral
-    AllowedValues: [ephemeral, development, production]
+    Default: development
+    AllowedValues: [development, production]
   LogLevel:
     Type: String
     Default: INFO
   ApplicationPath:
     Type: String
     Default: applications/nextjs-slongdotexe
-
+  EndpointName:
+    Type: String
+    Default: prod
+    AllowedPattern: '[a-zA-Z0-9_-]{1,64}'
+    Description: Stable endpoint name. Keep prod for existing stacks; changing it replaces the origin hostname.
+  CloudFrontDistributionId:
+    Type: String
+    Default: ''
+    AllowedPattern: '(^$|E[A-Z0-9]+)'
+    Description: CDN DistributionId output. When set, only that distribution can invoke the web endpoint.
 Conditions:
   IsProduction: !Equals [!Ref Environment, production]
+  IsDevelopment: !Equals [!Ref Environment, development]
+  UseCloudFront: !Not [!Equals [!Ref CloudFrontDistributionId, '']]
 
 Resources:
   IncrementalCacheBucket:
@@ -122,6 +133,11 @@ Resources:
               - Effect: Allow
                 Action: dynamodb:UpdateItem
                 Resource: !GetAtt CacheTagTable.Arn
+                Condition:
+                  ForAllValues:StringLike:
+                    dynamodb:LeadingKeys:
+                      - !Sub '${AWS::StackName}#tag#*'
+                      - !If [IsDevelopment, !Sub '${AWS::StackName}/previews/pr-*#tag#*', !Ref 'AWS::NoValue']
 
   CacheRevalidationFunction:
     Type: AWS::Serverless::Function
@@ -139,6 +155,7 @@ Resources:
         Variables:
           CACHE_TABLE_NAME: !Ref CacheTagTable
           CACHE_KEY_PREFIX: !Ref AWS::StackName
+          CACHE_PREVIEW_PREFIX: !If [IsDevelopment, !Sub '${AWS::StackName}/previews/pr-', !Ref 'AWS::NoValue']
       Events:
         Revalidate:
           Type: SQS
@@ -195,6 +212,11 @@ Resources:
               - Effect: Allow
                 Action: dynamodb:GetItem
                 Resource: !GetAtt CacheTagTable.Arn
+                Condition:
+                  ForAllValues:StringLike:
+                    dynamodb:LeadingKeys:
+                      - !Sub '${AWS::StackName}#tag#*'
+                      - !If [IsDevelopment, !Sub '${AWS::StackName}/previews/pr-*#tag#*', !Ref 'AWS::NoValue']
               - Effect: Allow
                 Action: sqs:SendMessage
                 Resource: !GetAtt CacheRevalidationQueue.Arn
@@ -223,7 +245,8 @@ Resources:
       Runtime: nodejs24.x
       CodeUri: out/web-function/
       EntryPoint: !Sub ${ApplicationPath}/server.js
-      AuthType: ApplicationManaged
+      AuthType: !If [UseCloudFront, IamAuth, ApplicationManaged]
+      EndpointName: !Ref EndpointName
       EndpointType: HomeRegion
       AutoDeploymentMode: LatestRevision
       ExecutionRoleArn: !GetAtt WebAppRole.Arn
@@ -239,11 +262,35 @@ Resources:
         CACHE_KEY_PREFIX: !Ref AWS::StackName
         CACHE_REVALIDATION_QUEUE_URL: !Ref CacheRevalidationQueue
         ENVIRONMENT: !Ref Environment
-        LOG_LEVEL: INFO
+        LOG_LEVEL: !Ref LogLevel
       Tags:
         Environment: !Ref Environment
 
+  WebAppCloudFrontPolicy:
+    Type: AWS::Lambda::ResourcePolicy
+    Condition: UseCloudFront
+    Properties:
+      ResourceArn: !Ref WebAppFunction
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: lambda:InvokeWebFunctionEndpoint
+            Resource: !Sub ${WebAppFunction}/endpoint/${EndpointName}
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}
+
 Outputs:
+  WebAppFunctionArn:
+    Value: !Ref WebAppFunction
+  WebAppEndpointName:
+    Value: !Ref EndpointName
+  WebAppOriginDomainName:
+    Description: Regional CloudFront origin hostname, without scheme or path.
+    Value: !GetAtt WebAppFunctionEndpoint.DomainName
   IncrementalCacheBucketName:
     Value: !Ref IncrementalCacheBucket
   CacheTagTableName:
@@ -259,3 +306,43 @@ Outputs:
   WebAppLocalLogGroupName:
     Description: Regional logs available before centralization completes.
     Value: !Ref WebAppLocalLogGroup
+  PreviewCacheBucketName:
+    Condition: IsDevelopment
+    Value: !Ref IncrementalCacheBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-PreviewCacheBucketName
+  PreviewCacheBucketArn:
+    Condition: IsDevelopment
+    Value: !GetAtt IncrementalCacheBucket.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-PreviewCacheBucketArn
+  PreviewCacheTagTableName:
+    Condition: IsDevelopment
+    Value: !Ref CacheTagTable
+    Export:
+      Name: !Sub ${AWS::StackName}-PreviewCacheTagTableName
+  PreviewCacheTagTableArn:
+    Condition: IsDevelopment
+    Value: !GetAtt CacheTagTable.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-PreviewCacheTagTableArn
+  PreviewWebFunctionArn:
+    Condition: IsDevelopment
+    Value: !Ref WebAppFunction
+    Export:
+      Name: !Sub ${AWS::StackName}-PreviewWebFunctionArn
+  PreviewRuntimeRoleArn:
+    Condition: IsDevelopment
+    Value: !GetAtt WebAppRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-PreviewRuntimeRoleArn
+  PreviewWebLogGroupName:
+    Condition: IsDevelopment
+    Value: !Ref WebAppLogGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-PreviewWebLogGroupName
+  PreviewRevalidationQueueUrl:
+    Condition: IsDevelopment
+    Value: !Ref CacheRevalidationQueue
+    Export:
+      Name: !Sub ${AWS::StackName}-PreviewRevalidationQueueUrl

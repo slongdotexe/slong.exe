@@ -2228,6 +2228,30 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@slongdotexe/nextjs-slongdotexe@workspace:applications/nextjs-slongdotexe":
+  version: 0.0.0-use.local
+  resolution: "@slongdotexe/nextjs-slongdotexe@workspace:applications/nextjs-slongdotexe"
+  dependencies:
+    "@aws-amplify/hosting": "npm:^1.0.0"
+    "@aws-blocks/hosting": "npm:^0.3.0"
+    "@aws-sdk/client-dynamodb": "npm:^3.1156.0"
+    "@aws-sdk/client-sqs": "npm:^3.1156.0"
+    "@tailwindcss/postcss": "npm:^4"
+    "@types/node": "npm:^20"
+    "@types/react": "npm:^19"
+    "@types/react-dom": "npm:^19"
+    aws-cdk-lib: "npm:^2.269.0"
+    constructs: "npm:^10.8.1"
+    eslint: "npm:^9"
+    eslint-config-next: "npm:16.3.5"
+    next: "npm:16.3.5"
+    react: "npm:19.2.8"
+    react-dom: "npm:19.2.8"
+    tailwindcss: "npm:^4"
+    typescript: "npm:^5"
+  languageName: unknown
+  linkType: soft
+
 "@slongdotexe/slongdotexe@workspace:.":
   version: 0.0.0-use.local
   resolution: "@slongdotexe/slongdotexe@workspace:."
@@ -5879,30 +5903,6 @@ __metadata:
   checksum: 10c0/5b51a93ec88229f8ae151d2f5a522b057ee15e00e4569bd2305736c96baac0844b7ebfc3db65f3d52eb0dbe415eac383792727264e725ad516c3cb2fcad76160
   languageName: node
   linkType: hard
-
-"nextjs-slongdotexe@workspace:applications/nextjs-slongdotexe":
-  version: 0.0.0-use.local
-  resolution: "nextjs-slongdotexe@workspace:applications/nextjs-slongdotexe"
-  dependencies:
-    "@aws-amplify/hosting": "npm:^1.0.0"
-    "@aws-blocks/hosting": "npm:^0.3.0"
-    "@aws-sdk/client-dynamodb": "npm:^3.1156.0"
-    "@aws-sdk/client-sqs": "npm:^3.1156.0"
-    "@tailwindcss/postcss": "npm:^4"
-    "@types/node": "npm:^20"
-    "@types/react": "npm:^19"
-    "@types/react-dom": "npm:^19"
-    aws-cdk-lib: "npm:^2.269.0"
-    constructs: "npm:^10.8.1"
-    eslint: "npm:^9"
-    eslint-config-next: "npm:16.3.5"
-    next: "npm:16.3.5"
-    react: "npm:19.2.8"
-    react-dom: "npm:19.2.8"
-    tailwindcss: "npm:^4"
-    typescript: "npm:^5"
-  languageName: unknown
-  linkType: soft
 
 "no-case@npm:^3.0.4":
   version: 3.0.4

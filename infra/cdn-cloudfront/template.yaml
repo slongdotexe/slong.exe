@@ -206,6 +206,9 @@ Resources:
         Origins:
           - Id: WebApp
             DomainName: !Ref WebAppOriginDomainName
+            OriginCustomHeaders:
+              - HeaderName: X-Forwarded-Host
+                HeaderValue: !Ref DomainName
             OriginAccessControlId: !GetAtt WebAppOriginAccessControl.Id
             CustomOriginConfig:
               OriginProtocolPolicy: https-only

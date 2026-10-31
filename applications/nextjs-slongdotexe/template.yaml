@@ -23,12 +23,77 @@ Parameters:
     Default: ''
     AllowedPattern: '(^$|E[A-Z0-9]+)'
     Description: CDN DistributionId output. When set, only that distribution can invoke the web endpoint.
+  RumDomainName:
+    Type: String
+    Default: ''
+    AllowedPattern: '(^$|[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+)'
+    Description: Public browser hostname without scheme or path. Leave empty to disable RUM.
+  RumSessionSampleRate:
+    Type: Number
+    Default: 0.1
+    MinValue: 0
+    MaxValue: 1
 Conditions:
   IsProduction: !Equals [!Ref Environment, production]
   IsDevelopment: !Equals [!Ref Environment, development]
   UseCloudFront: !Not [!Equals [!Ref CloudFrontDistributionId, '']]
+  EnableRum: !Not [!Equals [!Ref RumDomainName, '']]
 
 Resources:
+  RumIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Condition: EnableRum
+    Properties:
+      AllowUnauthenticatedIdentities: true
+
+  RumGuestRole:
+    Type: AWS::IAM::Role
+    Condition: EnableRum
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud: !Ref RumIdentityPool
+              ForAnyValue:StringLike:
+                cognito-identity.amazonaws.com:amr: unauthenticated
+      Policies:
+        - PolicyName: rum-publish-events
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: rum:PutRumEvents
+                Resource: !Sub arn:${AWS::Partition}:rum:${AWS::Region}:${AWS::AccountId}:appmonitor/${AWS::StackName}-rum
+
+  RumIdentityPoolRoles:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Condition: EnableRum
+    Properties:
+      IdentityPoolId: !Ref RumIdentityPool
+      Roles:
+        unauthenticated: !GetAtt RumGuestRole.Arn
+
+  RumAppMonitor:
+    Type: AWS::RUM::AppMonitor
+    Condition: EnableRum
+    Properties:
+      Name: !Sub ${AWS::StackName}-rum
+      Domain: !Ref RumDomainName
+      CwLogEnabled: false
+      AppMonitorConfiguration:
+        IdentityPoolId: !Ref RumIdentityPool
+        GuestRoleArn: !GetAtt RumGuestRole.Arn
+        AllowCookies: false
+        EnableXRay: false
+        SessionSampleRate: !Ref RumSessionSampleRate
+        Telemetries: [errors, performance, http]
+
   IncrementalCacheBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: !If [IsProduction, Retain, Delete]
@@ -266,6 +331,10 @@ Resources:
         CACHE_REVALIDATION_QUEUE_URL: !Ref CacheRevalidationQueue
         ENVIRONMENT: !Ref Environment
         LOG_LEVEL: !Ref LogLevel
+        RUM_APP_MONITOR_ID: !If [EnableRum, !GetAtt RumAppMonitor.Id, !Ref 'AWS::NoValue']
+        RUM_IDENTITY_POOL_ID: !If [EnableRum, !Ref RumIdentityPool, !Ref 'AWS::NoValue']
+        RUM_REGION: !If [EnableRum, !Ref 'AWS::Region', !Ref 'AWS::NoValue']
+        RUM_SESSION_SAMPLE_RATE: !Sub '${RumSessionSampleRate}'
       Tags:
         Environment: !Ref Environment
 
@@ -287,6 +356,15 @@ Resources:
                 aws:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}
 
 Outputs:
+  RumAppMonitorName:
+    Condition: EnableRum
+    Value: !Ref RumAppMonitor
+  RumAppMonitorId:
+    Condition: EnableRum
+    Value: !GetAtt RumAppMonitor.Id
+  RumIdentityPoolId:
+    Condition: EnableRum
+    Value: !Ref RumIdentityPool
   WebAppFunctionArn:
     Value: !Ref WebAppFunction
   WebAppEndpointName:

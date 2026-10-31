@@ -4,7 +4,10 @@ import { Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { Logger } from "@aws-lambda-powertools/logger";
 import { Tracer } from "@aws-lambda-powertools/tracer";
 import xray from "aws-xray-sdk-core";
-import type { InitializeHandler, InitializeHandlerOptions } from "@smithy/types";
+import type {
+  InitializeHandler,
+  InitializeHandlerOptions,
+} from "@smithy/types";
 import {
   XRayClient,
   PutTraceSegmentsCommand,
@@ -113,8 +116,11 @@ function createObservability() {
     if (registered) return;
     registered = true;
     const enabled = tracer.isTracingEnabled();
-    const defaultSampleRate = process.env.ENVIRONMENT === "development" ? "1" : "0.05";
-    const configuredRate = Number(process.env.XRAY_SAMPLE_RATE || defaultSampleRate);
+    const defaultSampleRate =
+      process.env.ENVIRONMENT === "development" ? "1" : "0.05";
+    const configuredRate = Number(
+      process.env.XRAY_SAMPLE_RATE || defaultSampleRate,
+    );
     const sampleRate = options.sampleRate ?? configuredRate;
     if (!Number.isFinite(sampleRate) || sampleRate < 0 || sampleRate > 1) {
       registered = false;
@@ -160,7 +166,9 @@ function createObservability() {
                       ),
                     });
                   } else {
-                    baseLogger.debug("X-Ray trace exported", { trace_id: segment.trace_id });
+                    baseLogger.debug("X-Ray trace exported", {
+                      trace_id: segment.trace_id,
+                    });
                   }
                 })
                 .catch((error: unknown) => {
@@ -266,7 +274,9 @@ function createObservability() {
                 method: request.method,
                 status: response.statusCode,
                 trace_sampled: segment ? !segment.notTraced : false,
-                upstream_sampling: header.match(/(?:^|;)\s*Sampled=([01?])(?:;|$)/)?.[1],
+                upstream_sampling: header.match(
+                  /(?:^|;)\s*Sampled=([01?])(?:;|$)/,
+                )?.[1],
                 duration_ms:
                   Math.round((performance.now() - started) * 100) / 100,
                 aborted,
@@ -312,14 +322,17 @@ function createObservability() {
     });
   }
 
-  function captureAWSv3Client<Client extends TraceableClient>(client: Client): Client {
+  function captureAWSv3Client<Client extends TraceableClient>(
+    client: Client,
+  ): Client {
     tracer.captureAWSv3Client(client);
     const restoreContext: TraceContextMiddleware = (next) => async (args) => {
       const requestSegment = context.getStore()?.segment;
       const active = xray.getSegment();
       const parent = requestSegment
         ? active === requestSegment ||
-          (active instanceof xray.Subsegment && active.segment === requestSegment)
+          (active instanceof xray.Subsegment &&
+            active.segment === requestSegment)
           ? active
           : requestSegment
         : active;
@@ -329,14 +342,11 @@ function createObservability() {
         return next(args);
       });
     };
-    client.middlewareStack.add(
-      restoreContext,
-      {
-        name: "RequestTraceContext",
-        step: "initialize",
-        override: true,
-      },
-    );
+    client.middlewareStack.add(restoreContext, {
+      name: "RequestTraceContext",
+      step: "initialize",
+      override: true,
+    });
     return client;
   }
 

@@ -23,9 +23,7 @@ export type CacheConfiguration = TagConfiguration & {
 
 const clientOptions = { maxAttempts: 3 };
 export const s3 = captureAWSv3Client(new S3Client(clientOptions));
-export const dynamo = captureAWSv3Client(
-  new DynamoDBClient(clientOptions),
-);
+export const dynamo = captureAWSv3Client(new DynamoDBClient(clientOptions));
 export const sqs = captureAWSv3Client(new SQSClient(clientOptions));
 export const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");

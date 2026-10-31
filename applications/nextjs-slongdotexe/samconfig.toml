@@ -28,7 +28,7 @@ warm_containers = "EAGER"
 
 [development.deploy.parameters]
 stack_name = "sam-nextjs-slongdotexe-development"
-parameter_overrides = "Environment=development LogLevel=INFO CloudFrontDistributionId=E31BQ5JT3K3S0G"
+parameter_overrides = "Environment=development LogLevel=INFO CloudFrontDistributionId=E31BQ5JT3K3S0G RumDomainName=development.seanlong.me RumSessionSampleRate=1"
 capabilities = "CAPABILITY_NAMED_IAM"
 
 [production.deploy.parameters]

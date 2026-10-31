@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 import { fileURLToPath } from "node:url";
 
+const cacheHandlerPath = fileURLToPath(
+  new URL("./src/cache/use-cache-handler.cjs", import.meta.url),
+);
+
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingIncludes: {
@@ -17,9 +21,7 @@ const nextConfig: NextConfig = {
     useCache: true,
   },
   cacheHandlers: {
-    default: fileURLToPath(
-      new URL("./src/cache/use-cache-handler.cjs", import.meta.url),
-    ),
+    default: cacheHandlerPath,
   },
 };
 

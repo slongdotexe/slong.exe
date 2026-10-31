@@ -35,6 +35,7 @@ find "$ARTIFACT" -type f \( -name '.env' -o -name '.env.*' \) -delete
 
 echo "Deploying to sandbox ($REGION)..."
 sam deploy --template-file "$APP/template.yaml" \
+  --stack-name "${STACK_NAME:-sam-nextjs-slongdotexe-ephemeral}" \
   --profile "$PROFILE" \
   --region "$REGION" \
   --resolve-s3 \

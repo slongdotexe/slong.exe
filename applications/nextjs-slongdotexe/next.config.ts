@@ -13,10 +13,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: fileURLToPath(new URL("../../", import.meta.url)),
   cacheComponents: true,
   outputFileTracingExcludes: {
-    "**/*": [
-      "**/node_modules/sharp/**/*",
-      "**/node_modules/@img/sharp-*/**/*",
-    ],
+    "**/*": ["**/node_modules/sharp/**/*", "**/node_modules/@img/sharp-*/**/*"],
   },
   outputFileTracingIncludes: {
     "/*": [

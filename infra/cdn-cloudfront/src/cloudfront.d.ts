@@ -7,6 +7,12 @@ declare module "cloudfront" {
   interface OriginUpdate {
     domainName: string;
     customHeaders?: Record<string, string>;
+    originAccessControlConfig?: {
+      enabled: boolean;
+      signingBehavior: "always-amz-auth";
+      signingProtocol: "sigv4";
+      originType: "lambda";
+    };
   }
 
   const cloudfront: {

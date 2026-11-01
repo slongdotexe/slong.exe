@@ -1,0 +1,10 @@
+version = 0.1
+
+[preview.deploy.parameters]
+stack_name = "sam-nextjs-slongdotexe-preview-cache"
+region = "ap-southeast-2"
+resolve_s3 = true
+no_fail_on_empty_changeset = true
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Environment=ephemeral CacheNamespace=previews PreviewPrefix=previews/pr-"

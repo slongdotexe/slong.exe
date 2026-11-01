@@ -1,0 +1,35 @@
+{
+  "name": "@slongdotexe/application-infrastructure",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./cache": {
+      "types": "./src/tags.ts",
+      "default": "./dist/cache/tags.mjs"
+    },
+    "./routing": "./src/routing/index.ts",
+    "./routing/parameters": "./src/routing/parameters.ts",
+    "./build": "./build.ts"
+  },
+  "scripts": {
+    "build": "node build.ts cache",
+    "build:runtime": "node build.ts runtime",
+    "build:routing": "node build.ts routing",
+    "typecheck": "tsc --project tsconfig.json",
+    "test": "node --test src/*.test.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudfront-keyvaluestore": "^3.1156.0",
+    "@aws-sdk/client-dynamodb": "^3.1156.0",
+    "@aws-sdk/client-ssm": "^3.1156.0",
+    "@aws-sdk/signature-v4a": "^3.1138.0",
+    "esbuild": "^0.27.0"
+  },
+  "devDependencies": {
+    "@slongdotexe/tsconfig": "workspace:*",
+    "@types/aws-lambda": "^8.10.159",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.2"
+  }
+}

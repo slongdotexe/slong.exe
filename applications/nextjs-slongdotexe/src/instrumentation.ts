@@ -1,11 +1,12 @@
 import type { Instrumentation } from "next";
 
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  await import("@aws/aws-distro-opentelemetry-node-autoinstrumentation/register");
-  const { createRequire } = await import("node:module");
-  const require = createRequire(import.meta.url);
-  require("node:http");
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    await import("@aws/aws-distro-opentelemetry-node-autoinstrumentation/register");
+    const { createRequire } = await import("node:module");
+    const require = createRequire(import.meta.url);
+    require("node:http");
+  }
 }
 
 export const onRequestError: Instrumentation.onRequestError = async (

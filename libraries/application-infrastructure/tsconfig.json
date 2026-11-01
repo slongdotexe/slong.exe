@@ -1,0 +1,8 @@
+{
+  "extends": "@slongdotexe/tsconfig/base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["build.ts", "src/**/*.ts"]
+}

@@ -5,17 +5,17 @@ Parameters:
   DomainName:
     Type: String
     AllowedPattern: '[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+'
-    Description: development.seanlong.me for development or seanlong.me for production.
+    Description: development.seanlong.me for development and ephemeral, or seanlong.me for production.
   CreateHostedZone:
     Type: String
     Default: 'false'
     AllowedValues: ['true', 'false']
-    Description: Create a delegated public zone for development only. Production DNS stays on Cloudflare.
+    Description: Create the shared delegated development zone. Ephemeral reuses it; production DNS stays on Cloudflare.
   IncludeWildcard:
     Type: String
     Default: 'false'
     AllowedValues: ['true', 'false']
-    Description: Include first-level subdomains in the certificate for development previews.
+    Description: Include first-level subdomains in the certificate for ephemeral previews.
 
 Conditions:
   UseRoute53: !Equals [!Ref CreateHostedZone, 'true']
@@ -32,6 +32,8 @@ Resources:
 
   ViewerCertificate:
     Type: AWS::CertificateManager::Certificate
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       DomainName: !Ref DomainName
       SubjectAlternativeNames: !If [UseWildcard, [!Sub '*.${DomainName}'], !Ref 'AWS::NoValue']
@@ -40,19 +42,22 @@ Resources:
         - UseRoute53
         - - DomainName: !Ref DomainName
             HostedZoneId: !Ref HostedZone
-          - !If
-            - UseWildcard
-            - DomainName: !Sub '*.${DomainName}'
-              HostedZoneId: !Ref HostedZone
-            - !Ref 'AWS::NoValue'
         - !Ref 'AWS::NoValue'
 
 Outputs:
+  DomainName:
+    Value: !Ref DomainName
+    Export:
+      Name: !Sub ${AWS::StackName}-DomainName
   CertificateArn:
     Value: !Ref ViewerCertificate
+    Export:
+      Name: !Sub ${AWS::StackName}-CertificateArn
   HostedZoneId:
     Condition: UseRoute53
     Value: !Ref HostedZone
+    Export:
+      Name: !Sub ${AWS::StackName}-HostedZoneId
   NameServers:
     Condition: UseRoute53
     Description: Publish these as DNS-only NS records for the subdomain in Cloudflare before certificate validation can complete.

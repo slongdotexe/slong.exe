@@ -5,5 +5,6 @@
     "**/applications/*/template.yaml": "cloudformation",
     "**/applications/*/template-preview.yaml": "cloudformation",
     "**/infra/*/template.yaml": "cloudformation",
+    "**/libraries/*/template.yaml": "cloudformation"
   },
 }

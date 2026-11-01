@@ -9,9 +9,12 @@
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront-keyvaluestore": "^3.1156.0",
+    "@aws-sdk/client-ssm": "^3.1156.0",
+    "@aws-sdk/signature-v4a": "^3.1138.0",
     "yaml": "^2.8.1"
   },
   "devDependencies": {
+    "@slongdotexe/application-infrastructure": "workspace:*",
     "@types/aws-lambda": "^8.10.159",
     "@types/node": "^24.0.0",
     "esbuild": "^0.27.0",

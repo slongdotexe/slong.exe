@@ -1,0 +1,28 @@
+version = 0.1
+
+[development.deploy.parameters]
+stack_name = "sam-nextjs-slongdotexe-development-cdn"
+profile = "slongdotexe"
+region = "us-east-1"
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+no_fail_on_empty_changeset = true
+confirm_changeset = false
+
+[production.deploy.parameters]
+stack_name = "sam-nextjs-slongdotexe-production-cdn"
+profile = "slongdotexe"
+region = "us-east-1"
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+no_fail_on_empty_changeset = true
+confirm_changeset = false
+
+[ephemeral.deploy.parameters]
+stack_name = "sam-nextjs-slongdotexe-ephemeral-cdn"
+profile = "slongdotexe"
+region = "us-east-1"
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+no_fail_on_empty_changeset = true
+confirm_changeset = false

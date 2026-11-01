@@ -2,38 +2,51 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: CloudFront CDN and WAF for the NextJS Lambda Web Function; deploy in us-east-1.
 
 Parameters:
+  Environment:
+    Type: String
+    Default: development
+    AllowedValues: [development, production, ephemeral]
   WebAppOriginDomainName:
     Type: String
-    Description: WebAppOriginDomainName output from the application stack, without https:// or a path.
-    AllowedPattern: '[a-zA-Z0-9.-]+\.lambda-web\.[a-z0-9-]+\.on\.aws'
-  DomainName:
+    Default: ''
+    Description: Mainline application origin; unused for the preview-only CDN.
+    AllowedPattern: '(^$|[a-zA-Z0-9.-]+\.lambda-web\.[a-z0-9-]+\.on\.aws)'
+  DNSStackName:
     Type: String
-    Description: Public hostname, for example seanlong.me or development.seanlong.me.
-    AllowedPattern: '[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+'
-  CertificateArn:
-    Type: String
-    Description: Validated ACM certificate ARN from the DNS/certificate stack in us-east-1.
-    AllowedPattern: 'arn:aws:acm:us-east-1:[0-9]{12}:certificate/[a-f0-9-]+'
-  IncludeWildcard:
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9-]*'
+    Description: DNS stack in this account and us-east-1 exporting DomainName, CertificateArn, and HostedZoneId.
+  CreateHostedZone:
     Type: String
     Default: 'false'
     AllowedValues: ['true', 'false']
-    Description: Associate *.DomainName with the common development distribution. The certificate must cover it.
-  HostedZoneId:
-    Type: String
-    Default: ''
-    Description: Existing authoritative public Route53 zone ID. Leave empty for Cloudflare DNS.
-    AllowedPattern: '(^$|Z[A-Z0-9]+)'
+    Description: Match the DNS stack's CreateHostedZone setting; conditions cannot evaluate imports.
   RateLimit:
     Type: Number
     Default: 2000
     MinValue: 10
     MaxValue: 2000000000
     Description: Maximum requests per viewer IP over a five-minute window (approximate).
+  AppRegion:
+    Type: String
+    Default: ap-southeast-2
+    AllowedPattern: '[a-z]{2}(-[a-z]+)+-[0-9]+'
+    Description: Region receiving the preview SSM parameters; must contain the shared application stack.
+  PreviewParameterPrefix:
+    Type: String
+    Default: /slongdotexe/ephemeral/cdn
+    AllowedPattern: '/[a-zA-Z0-9_./-]+[a-zA-Z0-9_-]'
 
 Conditions:
-  UseRoute53: !Not [!Equals [!Ref HostedZoneId, '']]
-  EnablePreviewRouting: !Equals [!Ref IncludeWildcard, 'true']
+  UseRoute53: !Equals [!Ref CreateHostedZone, 'true']
+  EnablePreviewRouting: !Equals [!Ref Environment, ephemeral]
+  IsMainline: !Not [!Equals [!Ref Environment, ephemeral]]
+
+Rules:
+  MainlineOrigin:
+    RuleCondition: !Not [!Equals [!Ref Environment, ephemeral]]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref WebAppOriginDomainName, '']]
+        AssertDescription: Mainline distributions require an application origin.
 
 Resources:
   PreviewRoutingStore:
@@ -75,6 +88,13 @@ Resources:
                   - cloudfront-keyvaluestore:DeleteKey
                 Resource: !GetAtt PreviewRoutingStore.Arn
               - Effect: Allow
+                Action: [ssm:GetParameter, ssm:PutParameter, ssm:DeleteParameter]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/owner'
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/distribution-id'
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/routing-store-arn'
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/preview-domain'
+              - Effect: Allow
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
                 Resource: !GetAtt RoutingConfigurationLogGroup.Arn
 
@@ -99,9 +119,24 @@ Resources:
       ServiceToken: !GetAtt RoutingConfigurationFunction.Arn
       ServiceTimeout: 180
       StoreArn: !GetAtt PreviewRoutingStore.Arn
-      Hostname: config:development-domain
-      DomainName: !Ref DomainName
-      RevisionId: !Ref DomainName
+      Hostname: config:preview-domain
+      DomainName:
+        Fn::ImportValue: !Sub ${DNSStackName}-DomainName
+      RevisionId:
+        Fn::ImportValue: !Sub ${DNSStackName}-DomainName
+
+  PreviewParameters:
+    Type: Custom::PreviewParameters
+    Condition: EnablePreviewRouting
+    Properties:
+      ServiceToken: !GetAtt RoutingConfigurationFunction.Arn
+      ServiceTimeout: 180
+      TargetRegion: !Ref AppRegion
+      ParameterPrefix: !Ref PreviewParameterPrefix
+      DistributionId: !Ref Distribution
+      StoreArn: !GetAtt PreviewRoutingStore.Arn
+      DomainName:
+        Fn::ImportValue: !Sub ${DNSStackName}-DomainName
 
   PreviewRoutingFunction:
     Type: AWS::CloudFront::Function
@@ -286,18 +321,25 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
-        Aliases: !If [EnablePreviewRouting, [!Ref DomainName, !Sub '*.${DomainName}'], [!Ref DomainName]]
+        Aliases: !If
+          - EnablePreviewRouting
+          - - !Join
+              - ''
+              - - '*.'
+                - Fn::ImportValue: !Sub ${DNSStackName}-DomainName
+          - - Fn::ImportValue: !Sub ${DNSStackName}-DomainName
         HttpVersion: http2and3
         IPV6Enabled: true
         PriceClass: PriceClass_All
         WebACLId: !GetAtt WebAcl.Arn
         Origins:
           - Id: WebApp
-            DomainName: !Ref WebAppOriginDomainName
+            DomainName: !If [IsMainline, !Ref WebAppOriginDomainName, preview.invalid]
             OriginCustomHeaders:
               - HeaderName: X-Forwarded-Host
-                HeaderValue: !Ref DomainName
-            OriginAccessControlId: !GetAtt WebAppOriginAccessControl.Id
+                HeaderValue:
+                  Fn::ImportValue: !Sub ${DNSStackName}-DomainName
+            OriginAccessControlId: !If [IsMainline, !GetAtt WebAppOriginAccessControl.Id, !Ref 'AWS::NoValue']
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
               OriginSSLProtocols: [TLSv1.2]
@@ -344,7 +386,8 @@ Resources:
           - ErrorCode: 504
             ErrorCachingMinTTL: 0
         ViewerCertificate:
-          AcmCertificateArn: !Ref CertificateArn
+          AcmCertificateArn:
+            Fn::ImportValue: !Sub ${DNSStackName}-CertificateArn
           MinimumProtocolVersion: TLSv1.2_2021
           SslSupportMethod: sni-only
 
@@ -352,23 +395,35 @@ Resources:
     Type: AWS::Route53::RecordSetGroup
     Condition: UseRoute53
     Properties:
-      HostedZoneId: !Ref HostedZoneId
+      HostedZoneId:
+        Fn::ImportValue: !Sub ${DNSStackName}-HostedZoneId
       RecordSets:
-        - Name: !Ref DomainName
-          Type: A
-          AliasTarget:
-            DNSName: !GetAtt Distribution.DomainName
-            HostedZoneId: Z2FDTNDATAQYW2
-            EvaluateTargetHealth: false
-        - Name: !Ref DomainName
-          Type: AAAA
-          AliasTarget:
-            DNSName: !GetAtt Distribution.DomainName
-            HostedZoneId: Z2FDTNDATAQYW2
-            EvaluateTargetHealth: false
         - !If
           - EnablePreviewRouting
-          - Name: !Sub '*.${DomainName}'
+          - !Ref 'AWS::NoValue'
+          - Name:
+              Fn::ImportValue: !Sub ${DNSStackName}-DomainName
+            Type: A
+            AliasTarget:
+              DNSName: !GetAtt Distribution.DomainName
+              HostedZoneId: Z2FDTNDATAQYW2
+              EvaluateTargetHealth: false
+        - !If
+          - EnablePreviewRouting
+          - !Ref 'AWS::NoValue'
+          - Name:
+              Fn::ImportValue: !Sub ${DNSStackName}-DomainName
+            Type: AAAA
+            AliasTarget:
+              DNSName: !GetAtt Distribution.DomainName
+              HostedZoneId: Z2FDTNDATAQYW2
+              EvaluateTargetHealth: false
+        - !If
+          - EnablePreviewRouting
+          - Name: !Join
+              - ''
+              - - '*.'
+                - Fn::ImportValue: !Sub ${DNSStackName}-DomainName
             Type: A
             AliasTarget:
               DNSName: !GetAtt Distribution.DomainName
@@ -377,7 +432,10 @@ Resources:
           - !Ref 'AWS::NoValue'
         - !If
           - EnablePreviewRouting
-          - Name: !Sub '*.${DomainName}'
+          - Name: !Join
+              - ''
+              - - '*.'
+                - Fn::ImportValue: !Sub ${DNSStackName}-DomainName
             Type: AAAA
             AliasTarget:
               DNSName: !GetAtt Distribution.DomainName
@@ -386,19 +444,15 @@ Resources:
           - !Ref 'AWS::NoValue'
 
 Outputs:
+  PreviewDomainName:
+    Condition: EnablePreviewRouting
+    Description: Base hostname for PR routes on the ephemeral CDN.
+    Value:
+      Fn::ImportValue: !Sub ${DNSStackName}-DomainName
   PreviewRoutingStoreArn:
     Condition: EnablePreviewRouting
     Description: Pass this ARN to preview stacks, including stacks in other regions.
     Value: !GetAtt PreviewRoutingStore.Arn
-  PreviewDomainName:
-    Condition: EnablePreviewRouting
-    Value: !Ref DomainName
-  PreviewHostedZoneId:
-    Condition: UseRoute53
-    Value: !Ref HostedZoneId
-  CertificateArn:
-    Description: ACM certificate managed by the separate DNS/certificate stack in us-east-1.
-    Value: !Ref CertificateArn
   DistributionId:
     Description: Cloudfront Distribution ID
     Value: !Ref Distribution
@@ -406,7 +460,11 @@ Outputs:
     Description: Cloudflare DNS-only CNAME target
     Value: !GetAtt Distribution.DomainName
   WebsiteUrl:
-    Value: !Sub https://${DomainName}
+    Condition: IsMainline
+    Value: !Join
+      - ''
+      - - https://
+        - Fn::ImportValue: !Sub ${DNSStackName}-DomainName
   WebAclArn:
     Value: !GetAtt WebAcl.Arn
   WafLogGroupName:

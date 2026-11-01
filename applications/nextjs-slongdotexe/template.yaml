@@ -1,12 +1,25 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Isolated development or production NextJS application and shared development preview infrastructure.
+Description: NextJS application with a nested cache stack or shared preview cache.
 
 Parameters:
   Environment:
     Type: String
     Default: development
-    AllowedValues: [development, production]
+    AllowedValues: [development, production, ephemeral]
+  PreviewName:
+    Type: String
+    Default: ''
+    AllowedPattern: '(^$|pr-[0-9]+)'
+    MaxLength: 64
+  SharedCacheStackName:
+    Type: String
+    Default: sam-nextjs-slongdotexe-preview-cache
+    Description: Separate cache stack in this region, used only by PR previews.
+  PreviewParameterPrefix:
+    Type: String
+    Default: /slongdotexe/ephemeral/cdn
+    AllowedPattern: '/[a-zA-Z0-9_./-]+[a-zA-Z0-9_-]'
   LogLevel:
     Type: String
     Default: INFO
@@ -18,11 +31,16 @@ Parameters:
     Default: prod
     AllowedPattern: '[a-zA-Z0-9_-]{1,64}'
     Description: Stable endpoint name. Keep prod for existing stacks; changing it replaces the origin hostname.
+  EndpointAuthType:
+    Type: String
+    Default: IamAuth
+    AllowedValues: [IamAuth, ApplicationManaged]
+    Description: Use IamAuth for CloudFront, including bootstrap before its distribution ID is available.
   CloudFrontDistributionId:
     Type: String
     Default: ''
     AllowedPattern: '(^$|E[A-Z0-9]+)'
-    Description: CDN DistributionId output. When set, only that distribution can invoke the web endpoint.
+    Description: Leave empty during bootstrap; provide the deployed CDN ID to authorize access.
   RumDomainName:
     Type: String
     Default: ''
@@ -35,9 +53,19 @@ Parameters:
     MaxValue: 1
 Conditions:
   IsProduction: !Equals [!Ref Environment, production]
-  IsDevelopment: !Equals [!Ref Environment, development]
-  UseCloudFront: !Not [!Equals [!Ref CloudFrontDistributionId, '']]
-  EnableRum: !Not [!Equals [!Ref RumDomainName, '']]
+  IsPreview: !Not [!Equals [!Ref PreviewName, '']]
+  OwnsCache: !Equals [!Ref PreviewName, '']
+  HasDistributionId: !Or [!Condition IsPreview, !Not [!Equals [!Ref CloudFrontDistributionId, '']]]
+  EnableRum: !And [!Condition OwnsCache, !Not [!Equals [!Ref RumDomainName, '']]]
+
+Rules:
+  PreviewConfiguration:
+    RuleCondition: !Not [!Equals [!Ref PreviewName, '']]
+    Assertions:
+      - Assert: !Equals [!Ref Environment, ephemeral]
+        AssertDescription: PR previews must use Environment=ephemeral.
+      - Assert: !Equals [!Ref EndpointAuthType, IamAuth]
+        AssertDescription: PR preview endpoints must use IAM authentication.
 
 Resources:
   RumIdentityPool:
@@ -94,158 +122,16 @@ Resources:
         SessionSampleRate: !Ref RumSessionSampleRate
         Telemetries: [errors, performance, http]
 
-  IncrementalCacheBucket:
-    Type: AWS::S3::Bucket
+  CacheStack:
+    Type: AWS::Serverless::Application
+    Condition: OwnsCache
     DeletionPolicy: !If [IsProduction, Retain, Delete]
     UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
     Properties:
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-
-  IncrementalCacheBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref IncrementalCacheBucket
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Deny
-            Principal: '*'
-            Action: s3:*
-            Resource:
-              - !GetAtt IncrementalCacheBucket.Arn
-              - !Sub ${IncrementalCacheBucket.Arn}/*
-            Condition:
-              Bool:
-                aws:SecureTransport: 'false'
-
-  CacheTagTable:
-    Type: AWS::DynamoDB::Table
-    DeletionPolicy: !If [IsProduction, Retain, Delete]
-    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
-    Properties:
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: pk
-          AttributeType: S
-      KeySchema:
-        - AttributeName: pk
-          KeyType: HASH
-      SSESpecification:
-        SSEEnabled: true
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-
-  CacheRevalidationDeadLetterQueue:
-    Type: AWS::SQS::Queue
-    DeletionPolicy: !If [IsProduction, Retain, Delete]
-    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
-    Properties:
-      FifoQueue: true
-      SqsManagedSseEnabled: true
-      MessageRetentionPeriod: 1209600
-
-  CacheRevalidationQueue:
-    Type: AWS::SQS::Queue
-    DeletionPolicy: !If [IsProduction, Retain, Delete]
-    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
-    Properties:
-      FifoQueue: true
-      SqsManagedSseEnabled: true
-      # At least six times the consumer timeout.
-      VisibilityTimeout: 180
-      MessageRetentionPeriod: 345600
-      RedrivePolicy:
-        deadLetterTargetArn: !GetAtt CacheRevalidationDeadLetterQueue.Arn
-        maxReceiveCount: 5
-
-  CacheRevalidationLogGroup:
-    Type: AWS::Logs::LogGroup
-    DeletionPolicy: !If [IsProduction, Retain, Delete]
-    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
-    Properties:
-      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-cache-revalidation
-      RetentionInDays: 90
-
-  CacheRevalidationRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: cache-revalidation-consumer
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
-                Resource: !GetAtt CacheRevalidationQueue.Arn
-              - Effect: Allow
-                Action: [logs:CreateLogStream, logs:PutLogEvents]
-                Resource: !GetAtt CacheRevalidationLogGroup.Arn
-              - Effect: Allow
-                Action: dynamodb:UpdateItem
-                Resource: !GetAtt CacheTagTable.Arn
-                Condition:
-                  ForAllValues:StringLike:
-                    dynamodb:LeadingKeys:
-                      - !Sub '${AWS::StackName}#tag#*'
-                      - !If [IsDevelopment, !Sub '${AWS::StackName}/previews/pr-*#tag#*', !Ref 'AWS::NoValue']
-
-  CacheRevalidationFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub ${AWS::StackName}-cache-revalidation
-      Runtime: nodejs24.x
-      CodeUri: out/web-function/
-      Handler: !Sub ${ApplicationPath}/src/cache/worker.handler
-      Role: !GetAtt CacheRevalidationRole.Arn
-      Timeout: 30
-      MemorySize: 256
-      LoggingConfig:
-        LogGroup: !Ref CacheRevalidationLogGroup
-      Environment:
-        Variables:
-          CACHE_TABLE_NAME: !Ref CacheTagTable
-          CACHE_KEY_PREFIX: !Ref AWS::StackName
-          CACHE_PREVIEW_PREFIX: !If [IsDevelopment, !Sub '${AWS::StackName}/previews/pr-', !Ref 'AWS::NoValue']
-      Events:
-        Revalidate:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt CacheRevalidationQueue.Arn
-            BatchSize: 1
-            FunctionResponseTypes: [ReportBatchItemFailures]
-            ScalingConfig:
-              MaximumConcurrency: 5
-
-  # CacheRevalidationDeadLetterAlarm:
-  #   Type: AWS::CloudWatch::Alarm
-  #   Properties:
-  #     AlarmDescription: Cache revalidation exhausted retries; inspect and redrive the FIFO DLQ.
-  #     Namespace: AWS/SQS
-  #     MetricName: ApproximateNumberOfMessagesVisible
-  #     Dimensions:
-  #       - Name: QueueName
-  #         Value: !GetAtt CacheRevalidationDeadLetterQueue.QueueName
-  #     Statistic: Maximum
-  #     Period: 60
-  #     EvaluationPeriods: 1
-  #     Threshold: 0
-  #     ComparisonOperator: GreaterThanThreshold
-  #     TreatMissingData: notBreaching
+      Location: out/cache/template.yaml
+      Parameters:
+        Environment: !Ref Environment
+        CacheNamespace: !Ref AWS::StackName
 
   WebAppRole:
     Type: AWS::IAM::Role
@@ -273,21 +159,52 @@ Resources:
                   - !GetAtt WebAppLocalLogGroup.Arn
               - Effect: Allow
                 Action: [s3:GetObject, s3:PutObject]
-                Resource: !Sub ${IncrementalCacheBucket.Arn}/${AWS::StackName}/*
+                Resource: !If
+                  - IsPreview
+                  - !Sub
+                    - '${BucketArn}/${Prefix}${PreviewName}/*'
+                    - BucketArn:
+                        Fn::ImportValue: !Sub ${SharedCacheStackName}-BucketArn
+                      Prefix:
+                        Fn::ImportValue: !Sub ${SharedCacheStackName}-PreviewPrefix
+                  - !Sub ${CacheStack.Outputs.BucketArn}/${AWS::StackName}/*
               - Effect: Allow
                 Action: s3:ListBucket
-                Resource: !GetAtt IncrementalCacheBucket.Arn
+                Resource: !If
+                  - IsPreview
+                  - Fn::ImportValue: !Sub ${SharedCacheStackName}-BucketArn
+                  - !GetAtt CacheStack.Outputs.BucketArn
+                Condition:
+                  StringLike:
+                    s3:prefix: !If
+                      - IsPreview
+                      - !Sub
+                        - '${Prefix}${PreviewName}/*'
+                        - Prefix:
+                            Fn::ImportValue: !Sub ${SharedCacheStackName}-PreviewPrefix
+                      - !Sub '${AWS::StackName}/*'
               - Effect: Allow
                 Action: dynamodb:GetItem
-                Resource: !GetAtt CacheTagTable.Arn
+                Resource: !If
+                  - IsPreview
+                  - Fn::ImportValue: !Sub ${SharedCacheStackName}-TagTableArn
+                  - !GetAtt CacheStack.Outputs.TagTableArn
                 Condition:
                   ForAllValues:StringLike:
                     dynamodb:LeadingKeys:
-                      - !Sub '${AWS::StackName}#tag#*'
-                      - !If [IsDevelopment, !Sub '${AWS::StackName}/previews/pr-*#tag#*', !Ref 'AWS::NoValue']
+                      - !If
+                        - IsPreview
+                        - !Sub
+                          - '${Prefix}${PreviewName}#tag#*'
+                          - Prefix:
+                              Fn::ImportValue: !Sub ${SharedCacheStackName}-PreviewPrefix
+                        - !Sub '${AWS::StackName}#tag#*'
               - Effect: Allow
                 Action: sqs:SendMessage
-                Resource: !GetAtt CacheRevalidationQueue.Arn
+                Resource: !If
+                  - IsPreview
+                  - Fn::ImportValue: !Sub ${SharedCacheStackName}-QueueArn
+                  - !GetAtt CacheStack.Outputs.QueueArn
               - Effect: Allow
                 Action: xray:PutTraceSegments
                 Resource: '*'
@@ -316,8 +233,8 @@ Resources:
       Runtime: nodejs24.x
       CodeUri: out/web-function/
       EntryPoint: !Sub ${ApplicationPath}/server.js
-      AuthType: !If [UseCloudFront, IamAuth, ApplicationManaged]
-      EndpointName: !Ref EndpointName
+      AuthType: !Ref EndpointAuthType
+      EndpointName: !If [IsPreview, !Ref PreviewName, !Ref EndpointName]
       EndpointType: HomeRegion
       AutoDeploymentMode: LatestRevision
       ExecutionRoleArn: !GetAtt WebAppRole.Arn
@@ -336,10 +253,25 @@ Resources:
         OTEL_TRACES_SAMPLER: !If [IsProduction, parentbased_traceidratio, !Ref 'AWS::NoValue']
         OTEL_TRACES_SAMPLER_ARG: !If [IsProduction, '0.05', !Ref 'AWS::NoValue']
         OTEL_RESOURCE_ATTRIBUTES: !Sub 'deployment.environment.name=${Environment},cloud.region=${AWS::Region}'
-        CACHE_BUCKET_NAME: !Ref IncrementalCacheBucket
-        CACHE_TABLE_NAME: !Ref CacheTagTable
-        CACHE_KEY_PREFIX: !Ref AWS::StackName
-        CACHE_REVALIDATION_QUEUE_URL: !Ref CacheRevalidationQueue
+        CACHE_BUCKET_NAME: !If
+          - IsPreview
+          - Fn::ImportValue: !Sub ${SharedCacheStackName}-BucketName
+          - !GetAtt CacheStack.Outputs.BucketName
+        CACHE_TABLE_NAME: !If
+          - IsPreview
+          - Fn::ImportValue: !Sub ${SharedCacheStackName}-TagTableName
+          - !GetAtt CacheStack.Outputs.TagTableName
+        CACHE_KEY_PREFIX: !If
+          - IsPreview
+          - !Sub
+            - '${Prefix}${PreviewName}'
+            - Prefix:
+                Fn::ImportValue: !Sub ${SharedCacheStackName}-PreviewPrefix
+          - !Ref AWS::StackName
+        CACHE_REVALIDATION_QUEUE_URL: !If
+          - IsPreview
+          - Fn::ImportValue: !Sub ${SharedCacheStackName}-QueueUrl
+          - !GetAtt CacheStack.Outputs.QueueUrl
         ENVIRONMENT: !Ref Environment
         LOG_LEVEL: !Ref LogLevel
         RUM_APP_MONITOR_ID: !If [EnableRum, !GetAtt RumAppMonitor.Id, !Ref 'AWS::NoValue']
@@ -351,7 +283,7 @@ Resources:
 
   WebAppCloudFrontPolicy:
     Type: AWS::Lambda::ResourcePolicy
-    Condition: UseCloudFront
+    Condition: HasDistributionId
     Properties:
       ResourceArn: !Ref WebAppFunction
       PolicyDocument:
@@ -361,10 +293,83 @@ Resources:
             Principal:
               Service: cloudfront.amazonaws.com
             Action: lambda:InvokeWebFunctionEndpoint
-            Resource: !Sub ${WebAppFunction}/endpoint/${EndpointName}
+            Resource: !If
+              - IsPreview
+              - !Sub ${WebAppFunction}/endpoint/${PreviewName}
+              - !Sub ${WebAppFunction}/endpoint/${EndpointName}
             Condition:
               StringEquals:
-                aws:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}
+                aws:SourceArn: !If
+                  - IsPreview
+                  - !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/{{resolve:ssm:${PreviewParameterPrefix}/distribution-id}}'
+                  - !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}
+
+  PreviewRoutingLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: IsPreview
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-preview-routing
+      RetentionInDays: 30
+
+  PreviewRoutingRole:
+    Type: AWS::IAM::Role
+    Condition: IsPreview
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: preview-routing
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudfront-keyvaluestore:DescribeKeyValueStore
+                  - cloudfront-keyvaluestore:GetKey
+                  - cloudfront-keyvaluestore:PutKey
+                  - cloudfront-keyvaluestore:DeleteKey
+                Resource: !Sub '{{resolve:ssm:${PreviewParameterPrefix}/routing-store-arn}}'
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/routing-store-arn'
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/preview-domain'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt PreviewRoutingLogGroup.Arn
+
+  PreviewRoutingFunction:
+    Type: AWS::Serverless::Function
+    Condition: IsPreview
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-preview-routing
+      Runtime: nodejs24.x
+      Handler: index.handler
+      Role: !GetAtt PreviewRoutingRole.Arn
+      Timeout: 120
+      MemorySize: 256
+      CodeUri: out/preview-routing-resource/
+      LoggingConfig:
+        LogGroup: !Ref PreviewRoutingLogGroup
+
+  PreviewRouting:
+    Type: Custom::PreviewRouting
+    Condition: IsPreview
+    DependsOn: WebAppCloudFrontPolicy
+    Properties:
+      ServiceToken: !GetAtt PreviewRoutingFunction.Arn
+      ServiceTimeout: 180
+      ParameterPrefix: !Ref PreviewParameterPrefix
+      PreviewName: !Ref PreviewName
+      DomainName: !GetAtt WebAppFunctionEndpoint.DomainName
+      RevisionId: !GetAtt WebAppFunctionRevision.RevisionId
 
 Outputs:
   RumAppMonitorName:
@@ -379,18 +384,22 @@ Outputs:
   WebAppFunctionArn:
     Value: !Ref WebAppFunction
   WebAppEndpointName:
-    Value: !Ref EndpointName
+    Value: !If [IsPreview, !Ref PreviewName, !Ref EndpointName]
   WebAppOriginDomainName:
     Description: Regional CloudFront origin hostname, without scheme or path.
     Value: !GetAtt WebAppFunctionEndpoint.DomainName
   IncrementalCacheBucketName:
-    Value: !Ref IncrementalCacheBucket
+    Condition: OwnsCache
+    Value: !GetAtt CacheStack.Outputs.BucketName
   CacheTagTableName:
-    Value: !Ref CacheTagTable
+    Condition: OwnsCache
+    Value: !GetAtt CacheStack.Outputs.TagTableName
   CacheRevalidationQueueUrl:
-    Value: !Ref CacheRevalidationQueue
+    Condition: OwnsCache
+    Value: !GetAtt CacheStack.Outputs.QueueUrl
   CacheRevalidationDeadLetterQueueUrl:
-    Value: !Ref CacheRevalidationDeadLetterQueue
+    Condition: OwnsCache
+    Value: !GetAtt CacheStack.Outputs.DeadLetterQueueUrl
   WebAppUrl:
     Value: !Sub https://${WebAppFunctionEndpoint.DomainName}
   WebAppLogGroupName:
@@ -398,43 +407,6 @@ Outputs:
   WebAppLocalLogGroupName:
     Description: Regional logs available before centralization completes.
     Value: !Ref WebAppLocalLogGroup
-  PreviewCacheBucketName:
-    Condition: IsDevelopment
-    Value: !Ref IncrementalCacheBucket
-    Export:
-      Name: !Sub ${AWS::StackName}-PreviewCacheBucketName
-  PreviewCacheBucketArn:
-    Condition: IsDevelopment
-    Value: !GetAtt IncrementalCacheBucket.Arn
-    Export:
-      Name: !Sub ${AWS::StackName}-PreviewCacheBucketArn
-  PreviewCacheTagTableName:
-    Condition: IsDevelopment
-    Value: !Ref CacheTagTable
-    Export:
-      Name: !Sub ${AWS::StackName}-PreviewCacheTagTableName
-  PreviewCacheTagTableArn:
-    Condition: IsDevelopment
-    Value: !GetAtt CacheTagTable.Arn
-    Export:
-      Name: !Sub ${AWS::StackName}-PreviewCacheTagTableArn
-  PreviewWebFunctionArn:
-    Condition: IsDevelopment
-    Value: !Ref WebAppFunction
-    Export:
-      Name: !Sub ${AWS::StackName}-PreviewWebFunctionArn
-  PreviewRuntimeRoleArn:
-    Condition: IsDevelopment
-    Value: !GetAtt WebAppRole.Arn
-    Export:
-      Name: !Sub ${AWS::StackName}-PreviewRuntimeRoleArn
-  PreviewWebLogGroupName:
-    Condition: IsDevelopment
-    Value: !Ref WebAppLogGroup
-    Export:
-      Name: !Sub ${AWS::StackName}-PreviewWebLogGroupName
-  PreviewRevalidationQueueUrl:
-    Condition: IsDevelopment
-    Value: !Ref CacheRevalidationQueue
-    Export:
-      Name: !Sub ${AWS::StackName}-PreviewRevalidationQueueUrl
+  PreviewUrl:
+    Condition: IsPreview
+    Value: !GetAtt PreviewRouting.PreviewUrl

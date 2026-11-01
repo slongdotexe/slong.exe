@@ -25,9 +25,8 @@ async function handler(event: ViewerRequestEvent): Promise<Request | Response> {
   const host = request.headers.host.value.toLowerCase();
   delete request.headers["x-forwarded-host"];
   try {
-    const configuration: RoutingConfiguration = JSON.parse(
-      await store.get("config:development-domain"),
-    );
+    const configurationValue = await store.get("config:preview-domain");
+    const configuration: RoutingConfiguration = JSON.parse(configurationValue);
     const domainName = configuration.domainName;
     if (
       !configuration ||
@@ -36,21 +35,18 @@ async function handler(event: ViewerRequestEvent): Promise<Request | Response> {
     ) {
       throw new Error("Invalid routing configuration");
     }
-    const developmentDomain = domainName;
-    if (host === developmentDomain) {
-      request.headers["x-preview-cache-key"] = { value: host };
-      return request;
-    }
+    const previewDomain = domainName;
     if (
-      !/^pr-[0-9]+$/.test(host.slice(0, -(1 + developmentDomain.length))) ||
-      !host.endsWith("." + developmentDomain)
+      !/^pr-[0-9]+$/.test(host.slice(0, -(1 + previewDomain.length))) ||
+      !host.endsWith("." + previewDomain)
     ) {
       return { statusCode: 404, statusDescription: "Not Found" };
     }
     if (!(await store.exists(host))) {
       return { statusCode: 404, statusDescription: "Not Found" };
     }
-    const route: PreviewRoute = JSON.parse(await store.get(host));
+    const routeValue = await store.get(host);
+    const route: PreviewRoute = JSON.parse(routeValue);
     if (
       !/^[a-zA-Z0-9.-]+\.lambda-web\.[a-z0-9-]+\.on\.aws$/.test(
         route.domainName,
@@ -66,6 +62,12 @@ async function handler(event: ViewerRequestEvent): Promise<Request | Response> {
     cf.updateRequestOrigin({
       domainName: route.domainName,
       customHeaders: { "x-forwarded-host": host },
+      originAccessControlConfig: {
+        enabled: true,
+        signingBehavior: "always-amz-auth",
+        signingProtocol: "sigv4",
+        originType: "lambda",
+      },
     });
     return request;
   } catch {

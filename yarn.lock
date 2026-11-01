@@ -246,6 +246,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@aws-sdk/client-ssm@npm:^3.1156.0":
+  version: 3.1156.0
+  resolution: "@aws-sdk/client-ssm@npm:3.1156.0"
+  dependencies:
+    "@aws-sdk/core": "npm:^3.978.5"
+    "@aws-sdk/credential-provider-node": "npm:^3.972.88"
+    "@aws-sdk/types": "npm:^3.975.0"
+    "@smithy/core": "npm:^3.36.1"
+    "@smithy/fetch-http-handler": "npm:^5.8.0"
+    "@smithy/node-http-handler": "npm:^4.12.1"
+    "@smithy/types": "npm:^4.19.0"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/695378a94691cdfa3c73edd29bb2900b9761c1c98aae42fdbc8316b7e88d1495a01054c3565ffd16005e6b1c7522b215f1259101007ae57990270d29ef14c4e1
+  languageName: node
+  linkType: hard
+
 "@aws-sdk/core@npm:^3.974.8, @aws-sdk/core@npm:^3.978.5":
   version: 3.978.5
   resolution: "@aws-sdk/core@npm:3.978.5"
@@ -522,6 +538,16 @@ __metadata:
     "@smithy/types": "npm:^4.19.0"
     tslib: "npm:^2.6.2"
   checksum: 10c0/ec8836c25fef94dc9aa6ad5cb097a97dfb2c55a1ecbf824e5796e09d182c1cd7d1131ce75e1846db0b928208ea83c0e7dcad046699152470e5a71aa219dc5b1f
+  languageName: node
+  linkType: hard
+
+"@aws-sdk/signature-v4a@npm:^3.1138.0":
+  version: 3.1138.0
+  resolution: "@aws-sdk/signature-v4a@npm:3.1138.0"
+  dependencies:
+    "@smithy/signature-v4a": "npm:^3.6.2"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/874672a84534ee1cf836db68a893726db77ab52fd90f67320a70cc040461fe5a7d9bb046cf139de0ae8948ff015ab3ff32fe81ca5f00af77d820ccfcae75b7c0
   languageName: node
   linkType: hard
 
@@ -3037,6 +3063,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@slongdotexe/application-infrastructure@workspace:*, @slongdotexe/application-infrastructure@workspace:libraries/application-infrastructure":
+  version: 0.0.0-use.local
+  resolution: "@slongdotexe/application-infrastructure@workspace:libraries/application-infrastructure"
+  dependencies:
+    "@aws-sdk/client-cloudfront-keyvaluestore": "npm:^3.1156.0"
+    "@aws-sdk/client-dynamodb": "npm:^3.1156.0"
+    "@aws-sdk/client-ssm": "npm:^3.1156.0"
+    "@aws-sdk/signature-v4a": "npm:^3.1138.0"
+    "@slongdotexe/tsconfig": "workspace:*"
+    "@types/aws-lambda": "npm:^8.10.159"
+    "@types/node": "npm:^24.0.0"
+    esbuild: "npm:^0.27.0"
+    typescript: "npm:^5.9.2"
+  languageName: unknown
+  linkType: soft
+
 "@slongdotexe/eslint-config@workspace:*, @slongdotexe/eslint-config@workspace:libraries/eslint-config-slongdotexe":
   version: 0.0.0-use.local
   resolution: "@slongdotexe/eslint-config@workspace:libraries/eslint-config-slongdotexe"
@@ -3075,6 +3117,9 @@ __metadata:
   resolution: "@slongdotexe/infra-cdn-cloudfront@workspace:infra/cdn-cloudfront"
   dependencies:
     "@aws-sdk/client-cloudfront-keyvaluestore": "npm:^3.1156.0"
+    "@aws-sdk/client-ssm": "npm:^3.1156.0"
+    "@aws-sdk/signature-v4a": "npm:^3.1138.0"
+    "@slongdotexe/application-infrastructure": "workspace:*"
     "@types/aws-lambda": "npm:^8.10.159"
     "@types/node": "npm:^24.0.0"
     esbuild: "npm:^0.27.0"
@@ -3101,6 +3146,7 @@ __metadata:
     "@aws-sdk/client-sqs": "npm:^3.1156.0"
     "@aws/aws-distro-opentelemetry-node-autoinstrumentation": "npm:^0.13.0"
     "@opentelemetry/api": "npm:1.9.1"
+    "@slongdotexe/application-infrastructure": "workspace:*"
     "@tailwindcss/postcss": "npm:^4"
     "@types/node": "npm:^20"
     "@types/react": "npm:^19"
@@ -3141,7 +3187,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@slongdotexe/tsconfig@npm:~0.0.1, @slongdotexe/tsconfig@workspace:libraries/tsconfig-slongdotexe":
+"@slongdotexe/tsconfig@npm:~0.0.1, @slongdotexe/tsconfig@workspace:*, @slongdotexe/tsconfig@workspace:libraries/tsconfig-slongdotexe":
   version: 0.0.0-use.local
   resolution: "@slongdotexe/tsconfig@workspace:libraries/tsconfig-slongdotexe"
   languageName: unknown
@@ -3367,7 +3413,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@smithy/signature-v4@npm:^5.0.0, @smithy/signature-v4@npm:^5.7.4":
+"@smithy/signature-v4@npm:^5.0.0, @smithy/signature-v4@npm:^5.7.2, @smithy/signature-v4@npm:^5.7.4":
   version: 5.7.4
   resolution: "@smithy/signature-v4@npm:5.7.4"
   dependencies:
@@ -3375,6 +3421,18 @@ __metadata:
     "@smithy/types": "npm:^4.19.0"
     tslib: "npm:^2.6.2"
   checksum: 10c0/4b8b00ea25122f4fe2233160f8b9e98841fbd1d91004d78e4dba58e34a31d741de0915e3108ef40f2130677fedb7b3a947a8a6d701b06c5117a6f8d05006de58
+  languageName: node
+  linkType: hard
+
+"@smithy/signature-v4a@npm:^3.6.2":
+  version: 3.6.2
+  resolution: "@smithy/signature-v4a@npm:3.6.2"
+  dependencies:
+    "@smithy/core": "npm:^3.33.2"
+    "@smithy/signature-v4": "npm:^5.7.2"
+    "@smithy/types": "npm:^4.17.2"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/0a592380a7c8583672c19eb5f33e0686392baa95ea96d6bb221131df9ff576a1f78ba7ff7a2a7c28055cd62f71c9b1a0a82fcd615fb17a9ca1cf14e1b6afba08
   languageName: node
   linkType: hard
 

@@ -1,11 +1,14 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  DynamoDBClient,
-  GetItemCommand,
+import { hash } from "@slongdotexe/application-infrastructure/cache";
+export {
+  dynamo,
+  hash,
+  invalidated,
+  invalidateTags,
   UpdateItemCommand,
-} from "@aws-sdk/client-dynamodb";
+} from "@slongdotexe/application-infrastructure/cache";
 import {
   S3Client,
   GetObjectCommand,
@@ -22,11 +25,8 @@ export type CacheConfiguration = TagConfiguration & {
 
 const clientOptions = { maxAttempts: 3 };
 export const s3 = new S3Client(clientOptions);
-export const dynamo = new DynamoDBClient(clientOptions);
 export const sqs = new SQSClient(clientOptions);
-export const hash = (value: string) =>
-  createHash("sha256").update(value).digest("hex");
-export { GetObjectCommand, PutObjectCommand, UpdateItemCommand };
+export { GetObjectCommand, PutObjectCommand };
 
 export function configuration(
   serverDistDir = join(process.cwd(), ".next/server"),
@@ -46,58 +46,6 @@ export function configuration(
 
 export function objectKey(config: CacheConfiguration, key: string) {
   return `${config.namespace}/${hash(key)}.cache`;
-}
-
-function tagKey(config: TagConfiguration, tag: string) {
-  return `${config.prefix}#tag#${hash(tag)}`;
-}
-
-export async function invalidated(
-  config: TagConfiguration,
-  tags: string[],
-  lastModified: number,
-) {
-  const results = await Promise.all(
-    [...new Set(tags)].map(async (tag) => {
-      const result = await dynamo.send(
-        new GetItemCommand({
-          TableName: config.table,
-          Key: { pk: { S: tagKey(config, tag) } },
-          ConsistentRead: true,
-          ProjectionExpression: "invalidatedAt",
-        }),
-      );
-      return Number(result.Item?.invalidatedAt?.N || 0) >= lastModified;
-    }),
-  );
-  return results.some(Boolean);
-}
-
-export async function invalidateTags(
-  config: TagConfiguration,
-  tags: string[],
-  timestamp = Date.now(),
-) {
-  for (const tag of new Set(tags)) {
-    try {
-      await dynamo.send(
-        new UpdateItemCommand({
-          TableName: config.table,
-          Key: { pk: { S: tagKey(config, tag) } },
-          UpdateExpression: "SET invalidatedAt = :timestamp",
-          ConditionExpression:
-            "attribute_not_exists(invalidatedAt) OR invalidatedAt < :timestamp",
-          ExpressionAttributeValues: { ":timestamp": { N: String(timestamp) } },
-        }),
-      );
-    } catch (error) {
-      if (
-        !(error instanceof Error) ||
-        error.name !== "ConditionalCheckFailedException"
-      )
-        throw error;
-    }
-  }
 }
 
 export async function enqueue(config: TagConfiguration, tags: string[]) {

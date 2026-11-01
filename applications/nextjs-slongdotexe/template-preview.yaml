@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: PR revision, pinned endpoint, and route on the shared ephemeral Web Function and CDN.
+
+Parameters:
+  EphemeralStackName:
+    Type: String
+    Default: sam-nextjs-slongdotexe-ephemeral
+    Description: Shared ephemeral application stack in this region.
+  PreviewRoutingStoreArn:
+    Type: String
+    Description: PreviewRoutingStoreArn output from the ephemeral CDN stack in us-east-1.
+  PreviewDomainName:
+    Type: String
+    AllowedPattern: '[a-z0-9-]+(\.[a-z0-9-]+)+'
+    Description: PreviewDomainName output from the ephemeral CDN stack, without a PR prefix.
+  PreviewName:
+    Type: String
+    AllowedPattern: 'pr-[0-9]+'
+    MaxLength: 64
+  CodeKey:
+    Type: String
+    AllowedPattern: 'previews/pr-[0-9]+/.+\.zip'
+  CodeVersion:
+    Type: String
+    MinLength: 1
+    AllowedPattern: '(?!null$).+'
+  ApplicationPath:
+    Type: String
+    Default: applications/nextjs-slongdotexe
+
+Resources:
+  PreviewRevision:
+    Type: AWS::Lambda::WebFunctionRevision
+    Properties:
+      FunctionName:
+        Fn::ImportValue: !Sub ${EphemeralStackName}-PreviewWebFunctionArn
+      BuildConfig:
+        CodeConfig:
+          S3Object:
+            Bucket:
+              Fn::ImportValue: !Sub ${EphemeralStackName}-PreviewCodeBucketName
+            Key: !Ref CodeKey
+            VersionId: !Ref CodeVersion
+        RuntimeConfig:
+          Runtime: nodejs24.x
+      ServiceConfig:
+        ExecutionRoleArn:
+          Fn::ImportValue: !Sub ${EphemeralStackName}-PreviewRuntimeRoleArn
+        TimeoutSeconds: 30
+        EnvironmentVariables:
+          AWS_LAMBDA_NODEJS_ENTRYPOINT: !Sub ${ApplicationPath}/server.js
+          NODE_OPTIONS: !Sub --import ./${ApplicationPath}/web-function-entrypoint.mts
+          OTEL_SERVICE_NAME: !Sub ${EphemeralStackName}-${PreviewName}-web
+          OTEL_METRICS_EXPORTER: none
+          OTEL_LOGS_EXPORTER: none
+          OTEL_TRACES_EXPORTER: otlp
+          OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: !Sub https://xray.${AWS::Region}.amazonaws.com/v1/traces
+          OTEL_RESOURCE_ATTRIBUTES: !Sub 'deployment.environment.name=ephemeral,cloud.region=${AWS::Region}'
+          CACHE_BUCKET_NAME:
+            Fn::ImportValue: !Sub ${EphemeralStackName}-PreviewCacheBucketName
+          CACHE_TABLE_NAME:
+            Fn::ImportValue: !Sub ${EphemeralStackName}-PreviewCacheTagTableName
+          CACHE_KEY_PREFIX: !Sub ${EphemeralStackName}/previews/${PreviewName}
+          CACHE_REVALIDATION_QUEUE_URL:
+            Fn::ImportValue: !Sub ${EphemeralStackName}-PreviewRevalidationQueueUrl
+          ENVIRONMENT: ephemeral
+          LOG_LEVEL: DEBUG
+        TelemetryConfig:
+          LoggingConfig:
+            LogGroup:
+              Fn::ImportValue: !Sub ${EphemeralStackName}-PreviewWebLogGroupName
+            ApplicationLogLevel: DEBUG
+            SystemLogLevel: INFO
+  PreviewEndpoint:
+    Type: AWS::Lambda::WebFunctionEndpoint
+    Properties:
+      FunctionName:
+        Fn::ImportValue: !Sub ${EphemeralStackName}-PreviewWebFunctionArn
+      EndpointName: !Ref PreviewName
+      EndpointType: HomeRegion
+      AuthType: IamAuth
+      RevisionWeights:
+        - RevisionId: !GetAtt PreviewRevision.RevisionId
+          Weight: 100
+
+  PreviewRoutingLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-preview-routing
+      RetentionInDays: 30
+
+  PreviewRoutingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: preview-routing
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudfront-keyvaluestore:DescribeKeyValueStore
+                  - cloudfront-keyvaluestore:GetKey
+                  - cloudfront-keyvaluestore:PutKey
+                  - cloudfront-keyvaluestore:DeleteKey
+                Resource: !Ref PreviewRoutingStoreArn
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt PreviewRoutingLogGroup.Arn
+
+  PreviewRoutingFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-preview-routing
+      Runtime: nodejs24.x
+      Handler: index.handler
+      Role: !GetAtt PreviewRoutingRole.Arn
+      Timeout: 120
+      MemorySize: 256
+      Code: out/preview-routing-resource/
+      LoggingConfig:
+        LogGroup: !Ref PreviewRoutingLogGroup
+
+  PreviewRouting:
+    Type: Custom::PreviewRouting
+    Properties:
+      ServiceToken: !GetAtt PreviewRoutingFunction.Arn
+      ServiceTimeout: 180
+      StoreArn: !Ref PreviewRoutingStoreArn
+      Hostname: !Sub ${PreviewName}.${PreviewDomainName}
+      DomainName: !GetAtt PreviewEndpoint.DomainName
+      RevisionId: !GetAtt PreviewRevision.RevisionId
+
+Outputs:
+  PreviewUrl:
+    Value: !Sub https://${PreviewName}.${PreviewDomainName}
+  WebAppOriginDomainName:
+    Value: !GetAtt PreviewEndpoint.DomainName
+  WebAppEndpointName:
+    Value: !Ref PreviewName
+  PreviewRevisionId:
+    Value: !GetAtt PreviewRevision.RevisionId
+  WebAppUrl:
+    Value: !Sub https://${PreviewEndpoint.DomainName}

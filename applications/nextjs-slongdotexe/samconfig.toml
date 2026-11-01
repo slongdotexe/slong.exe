@@ -28,10 +28,26 @@ warm_containers = "EAGER"
 
 [development.deploy.parameters]
 stack_name = "sam-nextjs-slongdotexe-development"
-parameter_overrides = "Environment=development LogLevel=INFO CloudFrontDistributionId=E31BQ5JT3K3S0G RumDomainName=development.seanlong.me RumSessionSampleRate=1"
-capabilities = "CAPABILITY_NAMED_IAM"
+profile = "slongdotexe"
+region = "ap-southeast-2"
+resolve_s3 = true
+no_fail_on_empty_changeset = true
+confirm_changeset = false
+parameter_overrides = "Environment=development LogLevel=INFO EndpointAuthType=IamAuth RumDomainName=development.seanlong.me RumSessionSampleRate=1"
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
 
 [production.deploy.parameters]
 stack_name = "sam-nextjs-slongdotexe-production"
-parameter_overrides = "Environment=production LogLevel=INFO"
-capabilities = "CAPABILITY_NAMED_IAM"
+profile = "slongdotexe"
+region = "ap-southeast-2"
+resolve_s3 = true
+no_fail_on_empty_changeset = true
+confirm_changeset = false
+parameter_overrides = "Environment=production LogLevel=INFO EndpointAuthType=IamAuth"
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+
+[preview.deploy.parameters]
+resolve_s3 = true
+no_fail_on_empty_changeset = true
+confirm_changeset = false
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"

@@ -3,7 +3,8 @@
   "aws.cloudformation.diagnostics.cfnLint.path": "/opt/homebrew/bin/cfn-lint",
   "files.associations": {
     "**/applications/*/template.yaml": "cloudformation",
-    "**/applications/*/preview-template.yaml": "cloudformation",
+    "**/applications/*/template-preview.yaml": "cloudformation",
     "**/infra/*/template.yaml": "cloudformation",
+    "**/libraries/*/template.yaml": "cloudformation"
   },
 }

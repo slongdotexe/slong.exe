@@ -7,8 +7,14 @@ const cacheHandlerPath = fileURLToPath(
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  images: {
+    unoptimized: true,
+  },
   outputFileTracingRoot: fileURLToPath(new URL("../../", import.meta.url)),
   cacheComponents: true,
+  outputFileTracingExcludes: {
+    "**/*": ["**/node_modules/sharp/**/*", "**/node_modules/@img/sharp-*/**/*"],
+  },
   outputFileTracingIncludes: {
     "/*": [
       "./src/cache/*.ts",

@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Application cache storage and independently packaged revalidation worker.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: development
+    AllowedValues: [development, production, ephemeral]
+  CacheNamespace:
+    Type: String
+    AllowedPattern: '[a-zA-Z0-9_-]+'
+  PreviewPrefix:
+    Type: String
+    Default: ''
+    AllowedPattern: '(^$|[a-zA-Z0-9_/-]+/pr-)'
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, production]
+  HasPreviews: !Not [!Equals [!Ref PreviewPrefix, '']]
+
+Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [!GetAtt Bucket.Arn, !Sub '${Bucket.Arn}/*']
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+  TagTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      FifoQueue: true
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600
+  Queue:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      FifoQueue: true
+      SqsManagedSseEnabled: true
+      VisibilityTimeout: 180
+      MessageRetentionPeriod: 345600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 5
+  WorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-revalidation
+      RetentionInDays: 90
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: revalidation
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+                Resource: !GetAtt Queue.Arn
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt WorkerLogGroup.Arn
+              - Effect: Allow
+                Action: dynamodb:UpdateItem
+                Resource: !GetAtt TagTable.Arn
+                Condition:
+                  ForAllValues:StringLike:
+                    dynamodb:LeadingKeys:
+                      - !Sub '${CacheNamespace}#tag#*'
+                      - !If [HasPreviews, !Sub '${PreviewPrefix}*#tag#*', !Ref 'AWS::NoValue']
+  Worker:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs24.x
+      CodeUri: worker/
+      Handler: index.handler
+      Role: !GetAtt WorkerRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      LoggingConfig:
+        LogGroup: !Ref WorkerLogGroup
+      Environment:
+        Variables:
+          CACHE_TABLE_NAME: !Ref TagTable
+          CACHE_KEY_PREFIX: !Ref CacheNamespace
+          CACHE_PREVIEW_PREFIX: !If [HasPreviews, !Ref PreviewPrefix, !Ref 'AWS::NoValue']
+      Events:
+        Revalidate:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt Queue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            ScalingConfig:
+              MaximumConcurrency: 5
+
+Outputs:
+  BucketName:
+    Value: !Ref Bucket
+    Export:
+      Name: !Sub ${AWS::StackName}-BucketName
+  BucketArn:
+    Value: !GetAtt Bucket.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-BucketArn
+  TagTableName:
+    Value: !Ref TagTable
+    Export:
+      Name: !Sub ${AWS::StackName}-TagTableName
+  TagTableArn:
+    Value: !GetAtt TagTable.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-TagTableArn
+  QueueUrl:
+    Value: !Ref Queue
+    Export:
+      Name: !Sub ${AWS::StackName}-QueueUrl
+  QueueArn:
+    Value: !GetAtt Queue.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-QueueArn
+  DeadLetterQueueUrl:
+    Value: !Ref DeadLetterQueue
+  CacheNamespace:
+    Value: !Ref CacheNamespace
+    Export:
+      Name: !Sub ${AWS::StackName}-CacheNamespace
+  PreviewPrefix:
+    Value: !Ref PreviewPrefix
+    Export:
+      Name: !Sub ${AWS::StackName}-PreviewPrefix

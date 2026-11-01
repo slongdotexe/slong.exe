@@ -1,0 +1,23 @@
+{
+  "name": "@slongdotexe/infra-cdn-cloudfront",
+  "version": "0.0.2",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json",
+    "build": "node scripts/build-cloudfront-handler.mts && node scripts/build-preview-handler.mts",
+    "test": "node --test src/handlers/*.test.mjs scripts/*.test.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudfront-keyvaluestore": "^3.1156.0",
+    "@aws-sdk/client-ssm": "^3.1156.0",
+    "@aws-sdk/signature-v4a": "^3.1138.0",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@slongdotexe/application-infrastructure": "workspace:*",
+    "@types/aws-lambda": "^8.10.159",
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.27.0",
+    "typescript": "^5.9.2"
+  }
+}

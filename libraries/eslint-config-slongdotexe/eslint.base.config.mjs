@@ -7,21 +7,7 @@ import Import from "eslint-plugin-import";
 import globals from "globals";
 import typescriptEslint from "typescript-eslint";
 
-const shopifyTypescript = {
-  ...Shopify,
-  rules: Object.fromEntries(
-    Object.entries(Shopify.rules)
-      .filter(([name]) => name.startsWith("typescript/"))
-      .map(([name, rule]) => [name.replace(/^typescript\//, ""), rule]),
-  ),
-};
-
 const typescriptFiles = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
-
-const typescriptConfig = typescriptEslint.configs.recommended.map((config) => ({
-  ...config,
-  files: config.files ?? typescriptFiles,
-}));
 
 export default defineConfig([
   js.configs.recommended,
@@ -35,7 +21,6 @@ export default defineConfig([
   {
     plugins: {
       "@shopify": Shopify,
-      "@shopify/typescript": shopifyTypescript,
     },
     languageOptions: {
       globals: {
@@ -45,9 +30,9 @@ export default defineConfig([
         ...globals.es6,
         ...globals.node,
       },
+      ecmaVersion: "latest",
       sourceType: "module",
       parserOptions: {
-        ecmaVersion: 2020,
         ecmaFeatures: { jsx: true },
       },
     },
@@ -67,8 +52,6 @@ export default defineConfig([
       "arrow-body-style": 2,
       quotes: [2, "single"],
       "@shopify/prefer-early-return": 1,
-      "@shopify/typescript/prefer-pascal-case-enums": 2,
-      "@shopify/typescript/prefer-singular-enums": 2,
       "import/prefer-default-export": "off",
       "eslint-comments/require-description": [
         "error",
@@ -98,9 +81,9 @@ export default defineConfig([
       "no-unused-private-class-members": "off",
     },
   },
-  ...typescriptConfig,
   {
     files: typescriptFiles,
+    extends: typescriptEslint.configs.recommended,
     languageOptions: {
       globals: {
         Atomics: "readonly",
@@ -111,6 +94,8 @@ export default defineConfig([
       },
     },
     rules: {
+      "@shopify/typescript-prefer-pascal-case-enums": "error",
+      "@shopify/typescript-prefer-singular-enums": "error",
       "no-shadow": "off",
       "@typescript-eslint/no-shadow": ["error"],
       "import/extensions": "off",

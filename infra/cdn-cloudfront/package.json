@@ -4,8 +4,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --project tsconfig.json",
-    "package-template": "node scripts/package-template.mjs",
-    "build-preview-handler": "node scripts/build-preview-handler.mjs",
+    "build": "node scripts/build-cloudfront-handler.mts && node scripts/build-preview-handler.mts",
     "test": "node --test src/handlers/*.test.mjs scripts/*.test.mjs"
   },
   "dependencies": {

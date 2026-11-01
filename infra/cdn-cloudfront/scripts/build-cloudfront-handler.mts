@@ -1,4 +1,6 @@
 import fs from "node:fs/promises";
+import { pathToFileURL } from "node:url";
+
 import { transform } from "esbuild";
 
 /**
@@ -26,4 +28,24 @@ export async function buildCloudFrontHandler() {
     throw new Error("CloudFront Functions code must not exceed 10 KB");
   }
   return result.code;
+}
+
+/** Build the JSON property fragment consumed by CloudFormation's AWS::Include transform. */
+export async function buildCloudFrontArtifact(
+  directory = new URL("../out/cloudfront-function/", import.meta.url),
+) {
+  const code = await buildCloudFrontHandler();
+  await fs.mkdir(directory, { recursive: true });
+  await fs.writeFile(new URL("index.js", directory), code);
+  await fs.writeFile(
+    new URL("code.json", directory),
+    JSON.stringify({ FunctionCode: code }),
+  );
+}
+
+if (
+  process.argv[1] &&
+  pathToFileURL(process.argv[1]).href === import.meta.url
+) {
+  await buildCloudFrontArtifact();
 }

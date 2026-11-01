@@ -14,3 +14,7 @@
 node_modules/
 submodules
 .DS_Store
+
+out/
+dist/
+pack/

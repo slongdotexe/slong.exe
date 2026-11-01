@@ -24,14 +24,6 @@ Parameters:
     Default: ''
     Description: Existing authoritative public Route53 zone ID. Leave empty for Cloudflare DNS.
     AllowedPattern: '(^$|Z[A-Z0-9]+)'
-  RoutingResourceCodeBucket:
-    Type: String
-    Default: unused-routing-artifacts
-    Description: S3 bucket in us-east-1 containing the configuration-writer Lambda artifact. Required for previews.
-  RoutingResourceCodeKey:
-    Type: String
-    Default: unused-routing-artifact.zip
-    Description: Immutable S3 key of the configuration-writer Lambda ZIP. Required for previews.
   RateLimit:
     Type: Number
     Default: 2000
@@ -96,9 +88,7 @@ Resources:
       Role: !GetAtt RoutingConfigurationRole.Arn
       Timeout: 120
       MemorySize: 256
-      Code:
-        S3Bucket: !Ref RoutingResourceCodeBucket
-        S3Key: !Ref RoutingResourceCodeKey
+      Code: out/preview-routing-resource/
       LoggingConfig:
         LogGroup: !Ref RoutingConfigurationLogGroup
 
@@ -111,12 +101,16 @@ Resources:
       StoreArn: !GetAtt PreviewRoutingStore.Arn
       Hostname: config:development-domain
       DomainName: !Ref DomainName
-      RevisionId: !Ref RoutingResourceCodeKey
+      RevisionId: !Ref DomainName
 
   PreviewRoutingFunction:
     Type: AWS::CloudFront::Function
     Condition: EnablePreviewRouting
     DependsOn: RoutingConfiguration
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks: [E3003]
     Properties:
       Name: !Sub ${AWS::StackName}-preview-routing
       AutoPublish: true
@@ -125,7 +119,10 @@ Resources:
         Runtime: cloudfront-js-2.0
         KeyValueStoreAssociations:
           - KeyValueStoreARN: !GetAtt PreviewRoutingStore.Arn
-      FunctionCode: ''
+      Fn::Transform:
+        Name: AWS::Include
+        Parameters:
+          Location: out/cloudfront-function/code.json
 
   WebAppOriginAccessControl:
     Type: AWS::CloudFront::OriginAccessControl

@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node", "aws-lambda"]
+  },
+  "include": ["src/**/*.js", "src/**/*.mjs", "src/**/*.ts"],
+  "exclude": ["src/**/*.test.mjs"]
+}

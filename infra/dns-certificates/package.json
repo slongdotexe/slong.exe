@@ -1,0 +1,13 @@
+{
+  "name": "@slongdotexe/infra-dns-certificates",
+  "version": "0.0.2",
+  "type": "module",
+  "author": "Sean L",
+  "license": "MIT",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

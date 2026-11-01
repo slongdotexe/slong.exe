@@ -275,6 +275,9 @@ Resources:
                 Action: [s3:GetObject, s3:PutObject]
                 Resource: !Sub ${IncrementalCacheBucket.Arn}/${AWS::StackName}/*
               - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt IncrementalCacheBucket.Arn
+              - Effect: Allow
                 Action: dynamodb:GetItem
                 Resource: !GetAtt CacheTagTable.Arn
                 Condition:

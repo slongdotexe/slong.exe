@@ -8,13 +8,30 @@ Parameters:
     AllowedPattern: '[a-zA-Z0-9.-]+\.lambda-web\.[a-z0-9-]+\.on\.aws'
   DomainName:
     Type: String
-    Description: Public hostname, for example slong.exe or app.example.com.
+    Description: Public hostname, for example seanlong.me or development.seanlong.me.
     AllowedPattern: '[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+'
+  CertificateArn:
+    Type: String
+    Description: Validated ACM certificate ARN from the DNS/certificate stack in us-east-1.
+    AllowedPattern: 'arn:aws:acm:us-east-1:[0-9]{12}:certificate/[a-f0-9-]+'
+  IncludeWildcard:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Associate *.DomainName with the common development distribution. The certificate must cover it.
   HostedZoneId:
     Type: String
     Default: ''
     Description: Existing authoritative public Route53 zone ID. Leave empty for Cloudflare DNS.
     AllowedPattern: '(^$|Z[A-Z0-9]+)'
+  RoutingResourceCodeBucket:
+    Type: String
+    Default: unused-routing-artifacts
+    Description: S3 bucket in us-east-1 containing the configuration-writer Lambda artifact. Required for previews.
+  RoutingResourceCodeKey:
+    Type: String
+    Default: unused-routing-artifact.zip
+    Description: Immutable S3 key of the configuration-writer Lambda ZIP. Required for previews.
   RateLimit:
     Type: Number
     Default: 2000
@@ -24,18 +41,91 @@ Parameters:
 
 Conditions:
   UseRoute53: !Not [!Equals [!Ref HostedZoneId, '']]
+  EnablePreviewRouting: !Equals [!Ref IncludeWildcard, 'true']
 
 Resources:
-  ViewerCertificate:
-    Type: AWS::CertificateManager::Certificate
+  PreviewRoutingStore:
+    Type: AWS::CloudFront::KeyValueStore
+    Condition: EnablePreviewRouting
     Properties:
+      Name: !Sub ${AWS::StackName}-preview-routing
+
+  RoutingConfigurationLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Condition: EnablePreviewRouting
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-routing-configuration
+      RetentionInDays: 30
+
+  RoutingConfigurationRole:
+    Type: AWS::IAM::Role
+    Condition: EnablePreviewRouting
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: routing-configuration
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudfront-keyvaluestore:DescribeKeyValueStore
+                  - cloudfront-keyvaluestore:GetKey
+                  - cloudfront-keyvaluestore:PutKey
+                  - cloudfront-keyvaluestore:DeleteKey
+                Resource: !GetAtt PreviewRoutingStore.Arn
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt RoutingConfigurationLogGroup.Arn
+
+  RoutingConfigurationFunction:
+    Type: AWS::Lambda::Function
+    Condition: EnablePreviewRouting
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-routing-configuration
+      Runtime: nodejs24.x
+      Handler: index.handler
+      Role: !GetAtt RoutingConfigurationRole.Arn
+      Timeout: 120
+      MemorySize: 256
+      Code:
+        S3Bucket: !Ref RoutingResourceCodeBucket
+        S3Key: !Ref RoutingResourceCodeKey
+      LoggingConfig:
+        LogGroup: !Ref RoutingConfigurationLogGroup
+
+  RoutingConfiguration:
+    Type: Custom::RoutingConfiguration
+    Condition: EnablePreviewRouting
+    Properties:
+      ServiceToken: !GetAtt RoutingConfigurationFunction.Arn
+      ServiceTimeout: 180
+      StoreArn: !GetAtt PreviewRoutingStore.Arn
+      Hostname: config:development-domain
       DomainName: !Ref DomainName
-      ValidationMethod: DNS
-      DomainValidationOptions: !If
-        - UseRoute53
-        - - DomainName: !Ref DomainName
-            HostedZoneId: !Ref HostedZoneId
-        - !Ref AWS::NoValue
+      RevisionId: !Ref RoutingResourceCodeKey
+
+  PreviewRoutingFunction:
+    Type: AWS::CloudFront::Function
+    Condition: EnablePreviewRouting
+    DependsOn: RoutingConfiguration
+    Properties:
+      Name: !Sub ${AWS::StackName}-preview-routing
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Route registered preview hostnames to pinned Web Function endpoints.
+        Runtime: cloudfront-js-2.0
+        KeyValueStoreAssociations:
+          - KeyValueStoreARN: !GetAtt PreviewRoutingStore.Arn
+      FunctionCode: ''
 
   WebAppOriginAccessControl:
     Type: AWS::CloudFront::OriginAccessControl
@@ -78,7 +168,8 @@ Resources:
           CookiesConfig:
             CookieBehavior: none
           HeadersConfig:
-            HeaderBehavior: none
+            HeaderBehavior: !If [EnablePreviewRouting, whitelist, none]
+            Headers: !If [EnablePreviewRouting, [x-preview-cache-key], !Ref 'AWS::NoValue']
           QueryStringsConfig:
             QueryStringBehavior: none
 
@@ -198,7 +289,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
-        Aliases: [!Ref DomainName]
+        Aliases: !If [EnablePreviewRouting, [!Ref DomainName, !Sub '*.${DomainName}'], [!Ref DomainName]]
         HttpVersion: http2and3
         IPV6Enabled: true
         PriceClass: PriceClass_All
@@ -223,6 +314,11 @@ Resources:
           CachePolicyId: !Ref DynamicCachePolicy
           OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
           ResponseHeadersPolicyId: !Ref SecurityHeadersPolicy
+          FunctionAssociations: !If
+            - EnablePreviewRouting
+            - - EventType: viewer-request
+                FunctionARN: !GetAtt PreviewRoutingFunction.FunctionARN
+            - !Ref 'AWS::NoValue'
         CacheBehaviors:
           - PathPattern: /_next/static/*
             TargetOriginId: WebApp
@@ -232,6 +328,11 @@ Resources:
             Compress: true
             CachePolicyId: !Ref StaticCachePolicy
             ResponseHeadersPolicyId: !Ref SecurityHeadersPolicy
+            FunctionAssociations: !If
+              - EnablePreviewRouting
+              - - EventType: viewer-request
+                  FunctionARN: !GetAtt PreviewRoutingFunction.FunctionARN
+              - !Ref 'AWS::NoValue'
         CustomErrorResponses:
           - ErrorCode: 403
             ErrorCachingMinTTL: 0
@@ -246,7 +347,7 @@ Resources:
           - ErrorCode: 504
             ErrorCachingMinTTL: 0
         ViewerCertificate:
-          AcmCertificateArn: !Ref ViewerCertificate
+          AcmCertificateArn: !Ref CertificateArn
           MinimumProtocolVersion: TLSv1.2_2021
           SslSupportMethod: sni-only
 
@@ -268,11 +369,39 @@ Resources:
             DNSName: !GetAtt Distribution.DomainName
             HostedZoneId: Z2FDTNDATAQYW2
             EvaluateTargetHealth: false
+        - !If
+          - EnablePreviewRouting
+          - Name: !Sub '*.${DomainName}'
+            Type: A
+            AliasTarget:
+              DNSName: !GetAtt Distribution.DomainName
+              HostedZoneId: Z2FDTNDATAQYW2
+              EvaluateTargetHealth: false
+          - !Ref 'AWS::NoValue'
+        - !If
+          - EnablePreviewRouting
+          - Name: !Sub '*.${DomainName}'
+            Type: AAAA
+            AliasTarget:
+              DNSName: !GetAtt Distribution.DomainName
+              HostedZoneId: Z2FDTNDATAQYW2
+              EvaluateTargetHealth: false
+          - !Ref 'AWS::NoValue'
 
 Outputs:
+  PreviewRoutingStoreArn:
+    Condition: EnablePreviewRouting
+    Description: Pass this ARN to preview stacks, including stacks in other regions.
+    Value: !GetAtt PreviewRoutingStore.Arn
+  PreviewDomainName:
+    Condition: EnablePreviewRouting
+    Value: !Ref DomainName
+  PreviewHostedZoneId:
+    Condition: UseRoute53
+    Value: !Ref HostedZoneId
   CertificateArn:
-    Description: ACM certificate managed by this stack in us-east-1.
-    Value: !Ref ViewerCertificate
+    Description: ACM certificate managed by the separate DNS/certificate stack in us-east-1.
+    Value: !Ref CertificateArn
   DistributionId:
     Description: Cloudfront Distribution ID
     Value: !Ref Distribution

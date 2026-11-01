@@ -144,7 +144,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: aurora-starter-runtime
+        - PolicyName: nextjs-slongdotexe-runtime
           PolicyDocument:
             Version: '2012-10-17'
             Statement:

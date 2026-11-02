@@ -1,0 +1,33 @@
+name: Deploy PR Preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number
+        type: number
+        required: true
+      operation:
+        description: Preview operation
+        type: choice
+        options: [deploy, delete]
+        required: true
+      build_run_id:
+        description: Successful Build Application run ID (deploy only)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    uses: ./.github/workflows/deploy-preview.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      build_run_id: ${{ inputs.build_run_id }}
+      operation: ${{ inputs.operation }}

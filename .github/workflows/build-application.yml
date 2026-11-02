@@ -1,0 +1,85 @@
+name: Build Application
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit or ref to build
+        type: string
+        required: true
+        default: main
+  workflow_call:
+    inputs:
+      sha:
+        description: Commit or ref to build
+        type: string
+        required: true
+    outputs:
+      run-id:
+        description: Run containing the application ZIP artifact
+        value: ${{ jobs.build.outputs.run-id }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      run-id: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable Yarn
+        run: corepack enable
+
+      - name: Cache Yarn dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.yarn/berry/cache
+          key: ${{ runner.os }}-yarn-${{ hashFiles('yarn.lock', '.yarnrc.yml', 'package.json') }}
+          restore-keys: ${{ runner.os }}-yarn-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build cache infrastructure
+        run: >-
+          yarn workspace @slongdotexe/application-infrastructure build
+          "$PWD/applications/nextjs-slongdotexe/out/cache"
+
+      - name: Build preview registration handler
+        run: node applications/nextjs-slongdotexe/scripts/build-preview-handler.mts
+
+      - name: Build Next.js application
+        run: yarn workspace @slongdotexe/nextjs-slongdotexe build
+
+      - name: Package standalone server
+        working-directory: applications/nextjs-slongdotexe
+        run: |
+          test -f .next/standalone/applications/nextjs-slongdotexe/server.js
+          mkdir -p out/web-function
+          cp -R .next/standalone/. out/web-function/
+          cp -R .next/static out/web-function/applications/nextjs-slongdotexe/.next/static
+          cp -R public out/web-function/applications/nextjs-slongdotexe/public
+          find out/web-function -type f \( -name '.env' -o -name '.env.*' \) -delete
+
+      - name: Create deployment ZIP
+        working-directory: applications/nextjs-slongdotexe
+        run: zip --recurse-paths --symlinks "$RUNNER_TEMP/application.zip" template.yaml samconfig.toml out
+
+      - name: Upload application artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: application
+          path: ${{ runner.temp }}/application.zip
+          if-no-files-found: error
+          retention-days: 30

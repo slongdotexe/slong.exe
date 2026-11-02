@@ -1,0 +1,67 @@
+name: Deploy Application
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Mainline application target
+        type: choice
+        options: [development, production]
+        required: true
+      build_run_id:
+        description: Successful Build Application run ID
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-application-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      TARGET: ${{ inputs.environment }}
+      APP_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      AWS_PAGER: ""
+    steps:
+      - name: Download application artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: application
+          path: ${{ runner.temp }}
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Unpack deployment ZIP
+        run: unzip -q "$RUNNER_TEMP/application.zip" -d "$RUNNER_TEMP/application"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.APP_REGION }}
+
+      - name: Deploy application
+        working-directory: ${{ runner.temp }}/application
+        run: >-
+          sam deploy
+          --config-env "$TARGET"
+          --region "$APP_REGION"
+
+      - name: Summarize application outputs
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name "sam-nextjs-slongdotexe-$TARGET" \
+            --region "$APP_REGION" \
+            --query 'Stacks[0].Outputs' \
+            --output table \
+            >> "$GITHUB_STEP_SUMMARY"

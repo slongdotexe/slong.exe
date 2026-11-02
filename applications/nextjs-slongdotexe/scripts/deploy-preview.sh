@@ -11,6 +11,7 @@ usage() {
   printf 'Usage: bash %s pr-NUMBER [--profile PROFILE] [--region REGION] [--skip-build]\n' "$0"
   printf 'Deploys the current checkout as a pinned PR revision and registers its CloudFront route.\n'
   printf 'Requires the shared preview cache and ephemeral CDN stacks to be deployed first.\n'
+  printf 'Set CLOUDFRONT_DISTRIBUTION_ID to the shared preview CDN distribution ID.\n'
 }
 
 while (( $# > 0 )); do
@@ -43,6 +44,7 @@ if [[ ! "$PREVIEW_NAME" =~ ^pr-[0-9]+$ ]] || (( ${#PREVIEW_NAME} > 64 )); then
   exit 1
 fi
 
+DISTRIBUTION_ID="${CLOUDFRONT_DISTRIBUTION_ID:?Set CLOUDFRONT_DISTRIBUTION_ID to the shared preview CDN ID}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../../.."
 APP=applications/nextjs-slongdotexe
@@ -68,4 +70,5 @@ sam deploy --template-file "$APP/template.yaml" \
   --config-file "$SCRIPT_DIR/../samconfig.toml" --config-env preview \
   --stack-name "$STACK_NAME" --region "$REGION" --profile "$PROFILE" \
   --parameter-overrides "Environment=ephemeral" "LogLevel=DEBUG" "EndpointAuthType=IamAuth" \
-    "SharedCacheStackName=$SHARED_CACHE_STACK" "PreviewName=$PREVIEW_NAME"
+    "SharedCacheStackName=$SHARED_CACHE_STACK" "CloudFrontDistributionId=$DISTRIBUTION_ID" \
+    "PreviewName=$PREVIEW_NAME"

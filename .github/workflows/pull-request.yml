@@ -1,0 +1,48 @@
+name: Pull Request
+
+on:
+  pull_request:
+    branches: [main]
+    types: [labeled, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'deploy-preview') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'deploy-preview')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-application.yml
+    with:
+      sha: ${{ github.event.pull_request.head.sha }}
+
+  deploy:
+    needs: build
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    uses: ./.github/workflows/deploy-preview.yml
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      build_run_id: ${{ needs.build.outputs.run-id }}
+      operation: deploy
+
+  delete:
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'deploy-preview')
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    uses: ./.github/workflows/deploy-preview.yml
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      operation: delete

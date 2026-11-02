@@ -1,0 +1,95 @@
+name: Deploy CDN
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: CDN target
+        type: choice
+        options: [development, production, ephemeral]
+        required: true
+      build_run_id:
+        description: Successful Build CDN run ID
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-cdn-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      TARGET: ${{ inputs.environment }}
+      APP_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      AWS_PAGER: ""
+    steps:
+      - name: Download CDN artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cdn
+          path: ${{ runner.temp }}
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Unpack deployment ZIP
+        run: unzip -q "$RUNNER_TEMP/cdn.zip" -d "$RUNNER_TEMP/cdn"
+      - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Look up application origin
+        if: inputs.environment != 'ephemeral'
+        id: origin
+        run: |
+          origin=$(
+            aws cloudformation describe-stacks \
+              --stack-name "sam-nextjs-slongdotexe-$TARGET" \
+              --region "$APP_REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='WebAppOriginDomainName'].OutputValue | [0]" \
+              --output text
+          )
+          [[ -n "$origin" && "$origin" != None ]]
+          echo "domain=$origin" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy mainline CDN
+        if: inputs.environment != 'ephemeral'
+        working-directory: ${{ runner.temp }}/cdn
+        env:
+          ORIGIN_DOMAIN: ${{ steps.origin.outputs.domain }}
+          CREATE_HOSTED_ZONE: ${{ inputs.environment == 'development' }}
+        run: |
+          sam deploy \
+            --config-env "$TARGET" \
+            --parameter-overrides \
+              "Environment=$TARGET" \
+              "AppRegion=$APP_REGION" \
+              "WebAppOriginDomainName=$ORIGIN_DOMAIN" \
+              "DNSStackName=sam-nextjs-slongdotexe-$TARGET-dns" \
+              "CreateHostedZone=$CREATE_HOSTED_ZONE"
+
+      - name: Deploy shared preview CDN
+        if: inputs.environment == 'ephemeral'
+        working-directory: ${{ runner.temp }}/cdn
+        run: sam deploy --config-env "$TARGET"
+
+      - name: Summarize CDN outputs
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name "sam-nextjs-slongdotexe-$TARGET-cdn" \
+            --region us-east-1 \
+            --query 'Stacks[0].Outputs' \
+            --output table \
+            >> "$GITHUB_STEP_SUMMARY"

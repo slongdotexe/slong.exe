@@ -55,7 +55,7 @@ Conditions:
   IsProduction: !Equals [!Ref Environment, production]
   IsPreview: !Not [!Equals [!Ref PreviewName, '']]
   OwnsCache: !Equals [!Ref PreviewName, '']
-  HasDistributionId: !Or [!Condition IsPreview, !Not [!Equals [!Ref CloudFrontDistributionId, '']]]
+  HasDistributionId: !Not [!Equals [!Ref CloudFrontDistributionId, '']]
   EnableRum: !And [!Condition OwnsCache, !Not [!Equals [!Ref RumDomainName, '']]]
 
 Rules:
@@ -66,6 +66,8 @@ Rules:
         AssertDescription: PR previews must use Environment=ephemeral.
       - Assert: !Equals [!Ref EndpointAuthType, IamAuth]
         AssertDescription: PR preview endpoints must use IAM authentication.
+      - Assert: !Not [!Equals [!Ref CloudFrontDistributionId, '']]
+        AssertDescription: PR previews require the shared preview CDN distribution ID.
 
 Resources:
   RumIdentityPool:
@@ -299,10 +301,7 @@ Resources:
               - !Sub ${WebAppFunction}/endpoint/${EndpointName}
             Condition:
               StringEquals:
-                aws:SourceArn: !If
-                  - IsPreview
-                  - !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/{{resolve:ssm:${PreviewParameterPrefix}/distribution-id}}'
-                  - !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}
+                aws:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}
 
   PreviewRoutingLogGroup:
     Type: AWS::Logs::LogGroup

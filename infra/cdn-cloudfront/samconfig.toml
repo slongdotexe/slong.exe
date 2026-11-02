@@ -1,28 +1,46 @@
 version = 0.1
 
 [development.deploy.parameters]
+template_file = "template.yaml"
 stack_name = "sam-nextjs-slongdotexe-development-cdn"
-profile = "slongdotexe"
 region = "us-east-1"
 resolve_s3 = true
 capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
 no_fail_on_empty_changeset = true
 confirm_changeset = false
+parameter_overrides = [
+	"Environment=development",
+	"AppRegion=ap-southeast-2",
+	"DNSStackName=sam-nextjs-slongdotexe-development-dns",
+	"CreateHostedZone=true",
+]
 
 [production.deploy.parameters]
+template_file = "template.yaml"
 stack_name = "sam-nextjs-slongdotexe-production-cdn"
-profile = "slongdotexe"
 region = "us-east-1"
 resolve_s3 = true
 capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
 no_fail_on_empty_changeset = true
 confirm_changeset = false
+parameter_overrides = [
+	"Environment=production",
+	"AppRegion=ap-southeast-2",
+	"DNSStackName=sam-nextjs-slongdotexe-production-dns",
+	"CreateHostedZone=false",
+]
 
 [ephemeral.deploy.parameters]
+template_file = "template.yaml"
 stack_name = "sam-nextjs-slongdotexe-ephemeral-cdn"
-profile = "slongdotexe"
 region = "us-east-1"
 resolve_s3 = true
 capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
 no_fail_on_empty_changeset = true
 confirm_changeset = false
+parameter_overrides = [
+	"Environment=ephemeral",
+	"AppRegion=ap-southeast-2",
+	"DNSStackName=sam-nextjs-slongdotexe-development-dns",
+	"CreateHostedZone=true",
+]

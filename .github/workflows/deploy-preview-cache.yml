@@ -1,0 +1,71 @@
+name: Deploy Preview Cache
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful Build Preview Cache run ID
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-preview-cache
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: ephemeral
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      APP_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      AWS_PAGER: ""
+    steps:
+      - name: Download preview cache artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: preview-cache
+          path: ${{ runner.temp }}
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Unpack deployment ZIP
+        run: unzip -q "$RUNNER_TEMP/preview-cache.zip" -d "$RUNNER_TEMP/preview-cache"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.APP_REGION }}
+
+      - name: Deploy shared preview cache
+        working-directory: ${{ runner.temp }}/preview-cache
+        run: |
+          sam deploy \
+            --template-file template.yaml \
+            --config-env ci \
+            --stack-name sam-nextjs-slongdotexe-preview-cache \
+            --region "$APP_REGION" \
+            --resolve-s3 \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides \
+              Environment=ephemeral \
+              CacheNamespace=previews \
+              PreviewPrefix=previews/pr-
+
+      - name: Summarize preview cache outputs
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name sam-nextjs-slongdotexe-preview-cache \
+            --region "$APP_REGION" \
+            --query 'Stacks[0].Outputs' \
+            --output table \
+            >> "$GITHUB_STEP_SUMMARY"

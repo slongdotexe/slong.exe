@@ -1,0 +1,73 @@
+name: Deploy DNS and Certificates
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target (development DNS also serves previews)
+        type: choice
+        options: [development, production]
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dns-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20 #TODO: Update to ~10 minutes after initial certificate deploy
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TARGET: ${{ inputs.environment }}
+      DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+      AWS_PAGER: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Deploy development DNS and wildcard certificate
+        if: inputs.environment == 'development'
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/dns-certificates/template.yaml \
+            --stack-name sam-nextjs-slongdotexe-development-dns \
+            --region us-east-1 \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "DomainName=${DOMAIN_NAME:-development.seanlong.me}" \
+              CreateHostedZone=true \
+              IncludeWildcard=true
+
+      - name: Deploy production certificate
+        if: inputs.environment == 'production'
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/dns-certificates/template.yaml \
+            --stack-name sam-nextjs-slongdotexe-production-dns \
+            --region us-east-1 \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "DomainName=${DOMAIN_NAME:-seanlong.me}" \
+              CreateHostedZone=false \
+              IncludeWildcard=false
+
+      - name: Summarize DNS outputs
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name "sam-nextjs-slongdotexe-$TARGET-dns" \
+            --query 'Stacks[0].Outputs' \
+            --output table \
+            >> "$GITHUB_STEP_SUMMARY"

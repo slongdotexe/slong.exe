@@ -97,6 +97,17 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
+          - Sid: SamTransform
+            Effect: Allow
+            Action: cloudformation:CreateChangeSet
+            Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31'
+          - Sid: PassNestedStackExecutionRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${RepositoryPrefix}-development-app-execution'
+            Condition:
+              StringEquals:
+                iam:PassedToService: cloudformation.amazonaws.com
           - Sid: NestedCacheStack
             Effect: Allow
             Action:
@@ -153,6 +164,7 @@ Resources:
             Action:
               - iam:GetRole
               - iam:DeleteRole
+              - iam:DeleteRolePermissionsBoundary
               - iam:UpdateAssumeRolePolicy
               - iam:GetRolePolicy
               - iam:PutRolePolicy
@@ -218,6 +230,9 @@ Resources:
             Action:
               - rum:CreateAppMonitor
               - rum:GetAppMonitor
+              - rum:ListRumMetricsDestinations
+              - rum:BatchGetRumMetricDefinitions
+              - rum:GetResourcePolicy
               - rum:UpdateAppMonitor
               - rum:DeleteAppMonitor
               - rum:ListTagsForResource
@@ -258,7 +273,7 @@ Resources:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: s3:GetObject
+                Action: [s3:GetObject, s3:GetObjectVersion]
                 Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${RepositoryPrefix}/development/*'
 
   developmentPipelineExecutionRole:
@@ -386,6 +401,17 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
+          - Sid: SamTransform
+            Effect: Allow
+            Action: cloudformation:CreateChangeSet
+            Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31'
+          - Sid: PassNestedStackExecutionRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${RepositoryPrefix}-production-app-execution'
+            Condition:
+              StringEquals:
+                iam:PassedToService: cloudformation.amazonaws.com
           - Sid: NestedCacheStack
             Effect: Allow
             Action:
@@ -442,6 +468,7 @@ Resources:
             Action:
               - iam:GetRole
               - iam:DeleteRole
+              - iam:DeleteRolePermissionsBoundary
               - iam:UpdateAssumeRolePolicy
               - iam:GetRolePolicy
               - iam:PutRolePolicy
@@ -507,6 +534,9 @@ Resources:
             Action:
               - rum:CreateAppMonitor
               - rum:GetAppMonitor
+              - rum:ListRumMetricsDestinations
+              - rum:BatchGetRumMetricDefinitions
+              - rum:GetResourcePolicy
               - rum:UpdateAppMonitor
               - rum:DeleteAppMonitor
               - rum:ListTagsForResource
@@ -547,7 +577,7 @@ Resources:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: s3:GetObject
+                Action: [s3:GetObject, s3:GetObjectVersion]
                 Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${RepositoryPrefix}/production/*'
 
   productionPipelineExecutionRole:
@@ -712,6 +742,14 @@ Resources:
             Action: [ cloudfront:GetDistribution, cloudfront:GetDistributionConfig, cloudfront:ListTagsForResource ]
             Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/*'
           - Effect: Allow
+            Action: cloudfront:TagResource
+            Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/*'
+            Condition:
+              StringEquals:
+                aws:RequestTag/DeploymentEnvironment: '${aws:PrincipalTag/DeploymentEnvironment}'
+              StringLike:
+                aws:RequestTag/Project: !Ref ApplicationResourcePrefix
+          - Effect: Allow
             Action: [ cloudfront:UpdateDistribution, cloudfront:DeleteDistribution, cloudfront:TagResource, cloudfront:UntagResource ]
             Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/*'
             Condition:
@@ -731,13 +769,62 @@ Resources:
           - Effect: Allow
             Action: [ cloudfront:DescribeKeyValueStore, cloudfront:UpdateKeyValueStore, cloudfront:DeleteKeyValueStore, cloudfront-keyvaluestore:DescribeKeyValueStore ]
             Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:key-value-store/*'
+
+  WafDeploymentPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${RepositoryPrefix}-waf-deployment-policy'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
           - Effect: Allow
-            Action: [ wafv2:CreateWebACL, wafv2:GetWebACL, wafv2:UpdateWebACL, wafv2:DeleteWebACL, wafv2:TagResource, wafv2:UntagResource, wafv2:ListTagsForResource, wafv2:PutLoggingConfiguration, wafv2:GetLoggingConfiguration, wafv2:DeleteLoggingConfiguration ]
-            Resource: !Sub 'arn:${AWS::Partition}:wafv2:us-east-1:${AWS::AccountId}:global/webacl/${ApplicationResourcePrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn-*/*'
+            Action: wafv2:CreateWebACL
+            Resource: !Sub 'arn:${AWS::Partition}:wafv2:us-east-1:${AWS::AccountId}:global/webacl/*/*'
+            Condition:
+              StringEquals:
+                aws:RequestTag/DeploymentEnvironment: '${aws:PrincipalTag/DeploymentEnvironment}'
+              StringLike:
+                aws:RequestTag/Project: !Ref ApplicationResourcePrefix
+          - Effect: Allow
+            Action: [ wafv2:GetWebACL, wafv2:ListTagsForResource, wafv2:GetLoggingConfiguration ]
+            Resource: !Sub 'arn:${AWS::Partition}:wafv2:us-east-1:${AWS::AccountId}:global/webacl/*/*'
+          - Effect: Allow
+            Action: [ wafv2:CreateWebACL, wafv2:UpdateWebACL ]
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:wafv2:us-east-1:${AWS::AccountId}:global/managedruleset/*/*'
+              - !Sub 'arn:${AWS::Partition}:wafv2:us-east-1:${AWS::AccountId}:global/rulegroup/*/*'
+              - !Sub 'arn:${AWS::Partition}:wafv2:us-east-1:${AWS::AccountId}:global/ipset/*/*'
+              - !Sub 'arn:${AWS::Partition}:wafv2:us-east-1:${AWS::AccountId}:global/regexpatternset/*/*'
+          - Effect: Allow
+            Action: wafv2:TagResource
+            Resource: !Sub 'arn:${AWS::Partition}:wafv2:us-east-1:${AWS::AccountId}:global/webacl/*/*'
+            Condition:
+              StringEquals:
+                aws:RequestTag/DeploymentEnvironment: '${aws:PrincipalTag/DeploymentEnvironment}'
+              StringLike:
+                aws:RequestTag/Project: !Ref ApplicationResourcePrefix
+          - Effect: Allow
+            Action: [ wafv2:UpdateWebACL, wafv2:DeleteWebACL, wafv2:TagResource, wafv2:UntagResource, wafv2:PutLoggingConfiguration, wafv2:DeleteLoggingConfiguration ]
+            Resource: !Sub 'arn:${AWS::Partition}:wafv2:us-east-1:${AWS::AccountId}:global/webacl/*/*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/DeploymentEnvironment: '${aws:PrincipalTag/DeploymentEnvironment}'
+              StringLike:
+                aws:ResourceTag/Project: !Ref ApplicationResourcePrefix
+
+  CdnRuntimeDeploymentPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${RepositoryPrefix}-cdn-runtime-deployment-policy'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
           - Effect: Allow
             Action: [ logs:CreateLogGroup, logs:DeleteLogGroup, logs:PutRetentionPolicy, logs:DeleteRetentionPolicy, logs:TagResource, logs:UntagResource, logs:ListTagsForResource ]
             Resource:
+              - !Sub 'arn:${AWS::Partition}:logs:us-east-1:${AWS::AccountId}:log-group:/aws/lambda/${ApplicationResourcePrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn-*'
               - !Sub 'arn:${AWS::Partition}:logs:us-east-1:${AWS::AccountId}:log-group:/aws/lambda/${ApplicationResourcePrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn-*:*'
+              - !Sub 'arn:${AWS::Partition}:logs:us-east-1:${AWS::AccountId}:log-group:aws-waf-logs-${ApplicationResourcePrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn'
               - !Sub 'arn:${AWS::Partition}:logs:us-east-1:${AWS::AccountId}:log-group:aws-waf-logs-${ApplicationResourcePrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn:*'
           - Effect: Allow
             Action: [ logs:DescribeLogGroups, logs:DescribeResourcePolicies, logs:PutResourcePolicy, logs:CreateLogDelivery, logs:UpdateLogDelivery, logs:DeleteLogDelivery, logs:GetLogDelivery, logs:ListLogDeliveries ]
@@ -792,7 +879,7 @@ Resources:
             Principal:
               Service: cloudformation.amazonaws.com
             Action: sts:AssumeRole
-      ManagedPolicyArns: [ !Ref DnsDeploymentPolicy, !Ref CdnDeploymentPolicy ]
+      ManagedPolicyArns: [ !Ref DnsDeploymentPolicy, !Ref CdnDeploymentPolicy, !Ref WafDeploymentPolicy, !Ref CdnRuntimeDeploymentPolicy ]
       Policies:
         - PolicyName: ManageLegacyRoutingRole
           PolicyDocument:
@@ -818,7 +905,7 @@ Resources:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: s3:GetObject
+                Action: [s3:GetObject, s3:GetObjectVersion]
                 Resource: !Sub 'arn:${AWS::Partition}:s3:::${RepositoryPrefix}-artifacts-${AWS::AccountId}-us-east-1/${RepositoryPrefix}/development/infrastructure/*'
 
   developmentInfrastructurePipelineRole:
@@ -889,14 +976,14 @@ Resources:
             Principal:
               Service: cloudformation.amazonaws.com
             Action: sts:AssumeRole
-      ManagedPolicyArns: [ !Ref DnsDeploymentPolicy, !Ref CdnDeploymentPolicy ]
+      ManagedPolicyArns: [ !Ref DnsDeploymentPolicy, !Ref CdnDeploymentPolicy, !Ref WafDeploymentPolicy, !Ref CdnRuntimeDeploymentPolicy ]
       Policies:
         - PolicyName: ReadArtifacts
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: s3:GetObject
+                Action: [s3:GetObject, s3:GetObjectVersion]
                 Resource: !Sub 'arn:${AWS::Partition}:s3:::${RepositoryPrefix}-artifacts-${AWS::AccountId}-us-east-1/${RepositoryPrefix}/production/infrastructure/*'
   productionInfrastructurePipelineRole:
     Type: AWS::IAM::Role
@@ -1007,7 +1094,7 @@ Resources:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: [s3:GetObject]
+                Action: [s3:GetObject, s3:GetObjectVersion]
                 Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${RepositoryPrefix}/preview/*'
               - Effect: Allow
                 Action: [ssm:GetParameter, ssm:GetParameters]
@@ -1108,14 +1195,14 @@ Resources:
             Principal:
               Service: cloudformation.amazonaws.com
             Action: sts:AssumeRole
-      ManagedPolicyArns: [!Ref CdnDeploymentPolicy]
+      ManagedPolicyArns: [!Ref CdnDeploymentPolicy, !Ref WafDeploymentPolicy, !Ref CdnRuntimeDeploymentPolicy]
       Policies:
         - PolicyName: SharedPreviewInfrastructure
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: s3:GetObject
+                Action: [s3:GetObject, s3:GetObjectVersion]
                 Resource:
                   - !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${RepositoryPrefix}/preview-infrastructure/*'
                   - !Sub 'arn:${AWS::Partition}:s3:::${RepositoryPrefix}-artifacts-${AWS::AccountId}-us-east-1/${RepositoryPrefix}/preview-infrastructure/*'

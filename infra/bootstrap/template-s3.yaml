@@ -43,6 +43,18 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
+          - Sid: LambdaWebFunctionArtifacts
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: [s3:GetObject, s3:GetObjectVersion]
+            Resource:
+              - !Sub '${Templates.Arn}/${RepositoryPrefix}/development/*'
+              - !Sub '${Templates.Arn}/${RepositoryPrefix}/production/*'
+              - !Sub '${Templates.Arn}/${RepositoryPrefix}/preview/*'
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
           - Effect: Deny
             Principal: '*'
             Action: s3:*

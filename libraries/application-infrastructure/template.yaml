@@ -17,6 +17,7 @@ Parameters:
 
 Conditions:
   IsProduction: !Equals [!Ref Environment, production]
+  HasPreviews: !Not [!Equals [!Ref PreviewPrefix, '']]
 
 Resources:
   Bucket:
@@ -86,6 +87,7 @@ Outputs:
     Export:
       Name: !Sub ${AWS::StackName}-CacheNamespace
   PreviewPrefix:
+    Condition: HasPreviews
     Value: !Ref PreviewPrefix
     Export:
       Name: !Sub ${AWS::StackName}-PreviewPrefix

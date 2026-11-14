@@ -61,8 +61,6 @@ jobs:
 
       - name: Deploy preview and register route
         working-directory: ${{ runner.temp }}/application
-        env:
-          DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
         run: |
           sam deploy \
             --config-env preview \
@@ -73,20 +71,22 @@ jobs:
               LogLevel=DEBUG \
               EndpointAuthType=IamAuth \
               SharedCacheStackName=sam-nextjs-slongdotexe-preview-cache \
-              "CloudFrontDistributionId=$DISTRIBUTION_ID" \
+              EnableCloudFrontAuthorization=true \
+              PreviewParameterPrefix=/slongdotexe/ephemeral/cdn \
               "PreviewName=$PREVIEW_NAME"
 
       - name: Publish preview URL
         id: preview-url
         run: |
-          domain=$(
-            aws ssm get-parameter \
-              --name /slongdotexe/ephemeral/cdn/preview-domain \
-              --query Parameter.Value \
+          preview_url=$(
+            aws cloudformation describe-stacks \
+              --stack-name "sam-nextjs-slongdotexe-$PREVIEW_NAME" \
+              --region "$APP_REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='PreviewUrl'].OutputValue | [0]" \
               --output text
           )
-          echo "url=https://$PREVIEW_NAME.$domain" >> "$GITHUB_OUTPUT"
-          echo "Preview: https://$PREVIEW_NAME.$domain" >> "$GITHUB_STEP_SUMMARY"
+          echo "url=$preview_url" >> "$GITHUB_OUTPUT"
+          echo "Preview: $preview_url" >> "$GITHUB_STEP_SUMMARY"
 
   delete:
     if: inputs.operation == 'delete'

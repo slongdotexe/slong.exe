@@ -188,7 +188,10 @@ export async function synchronizeResource(
   storeClient = client,
   parameterClient?: SSMClient,
 ): Promise<{ physicalResourceId: string; data: Record<string, string> }> {
-  if (event.ResourceType === "Custom::PreviewParameters") {
+  if (
+    event.ResourceType === "Custom::PreviewParameters" ||
+    event.ResourceType === "Custom::DistributionParameters"
+  ) {
     const normalized = await resolveEvent(event, async (properties) =>
       parseParameterProperties(properties),
     );

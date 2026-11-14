@@ -23,7 +23,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 90
     environment: ${{ inputs.environment }}
     permissions:
       contents: read
@@ -73,6 +73,7 @@ jobs:
         run: |
           sam deploy \
             --config-env "$TARGET" \
+            --region us-east-1 \
             --parameter-overrides \
               "Environment=$TARGET" \
               "AppRegion=$APP_REGION" \
@@ -83,7 +84,18 @@ jobs:
       - name: Deploy shared preview CDN
         if: inputs.environment == 'ephemeral'
         working-directory: ${{ runner.temp }}/cdn
-        run: sam deploy --config-env "$TARGET"
+        run: sam deploy --config-env "$TARGET" --region us-east-1 \
+          --parameter-overrides \
+          "Environment=$TARGET" "AppRegion=$APP_REGION" \
+          DNSStackName=sam-nextjs-slongdotexe-development-dns \
+          CreateHostedZone=true \
+          PreviewParameterPrefix=/slongdotexe/ephemeral/cdn
+
+      - name: Summarize application authorization follow-up
+        if: inputs.environment != 'ephemeral'
+        run:
+          printf 'Deploy Application with bootstrap disabled to resolve the CDN parameter and update origin authorization.\n' \
+          >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize CDN outputs
         run: |

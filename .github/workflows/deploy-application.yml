@@ -12,6 +12,10 @@ on:
         description: Successful Build Application run ID
         type: string
         required: true
+      bootstrap:
+        description: Initial deployment only, before the CDN publishes its SSM parameter
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -23,7 +27,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 90
     environment: ${{ inputs.environment }}
     permissions:
       contents: read
@@ -45,17 +49,21 @@ jobs:
       - name: Unpack deployment ZIP
         run: unzip -q "$RUNNER_TEMP/application.zip" -d "$RUNNER_TEMP/application"
 
+      - uses: aws-actions/setup-sam@v2
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.APP_REGION }}
 
-      - name: Deploy application
+      - name: Bootstrap application
+        if: ${{ inputs.bootstrap }}
         working-directory: ${{ runner.temp }}/application
-        run: >-
-          sam deploy
-          --config-env "$TARGET"
-          --region "$APP_REGION"
+        run: sam deploy --config-env "$TARGET-bootstrap" --region "$APP_REGION"
+
+      - name: Deploy application
+        if: ${{ !inputs.bootstrap }}
+        working-directory: ${{ runner.temp }}/application
+        run: sam deploy --config-env "$TARGET" --region "$APP_REGION"
 
       - name: Summarize application outputs
         run: |

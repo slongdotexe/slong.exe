@@ -23,8 +23,8 @@ export interface ParameterProperties {
   TargetRegion: string;
   ParameterPrefix: string;
   DistributionId: string;
-  StoreArn: string;
-  DomainName: string;
+  StoreArn?: string;
+  DomainName?: string;
 }
 
 type PropertiesEvent<
@@ -99,18 +99,27 @@ export function parseParameterProperties(value: unknown): ParameterProperties {
     !("ParameterPrefix" in value) ||
     typeof value.ParameterPrefix !== "string" ||
     !("DistributionId" in value) ||
-    typeof value.DistributionId !== "string" ||
-    !("StoreArn" in value) ||
-    typeof value.StoreArn !== "string" ||
-    !("DomainName" in value) ||
-    typeof value.DomainName !== "string"
+    typeof value.DistributionId !== "string"
   )
-    throw new Error("Invalid preview parameter properties");
-  return {
+    throw new Error("Invalid CDN parameter properties");
+  const properties: ParameterProperties = {
     TargetRegion: value.TargetRegion,
     ParameterPrefix: value.ParameterPrefix,
     DistributionId: value.DistributionId,
-    StoreArn: value.StoreArn,
-    DomainName: value.DomainName,
   };
+  if ("StoreArn" in value || "DomainName" in value) {
+    if (
+      !("StoreArn" in value) ||
+      typeof value.StoreArn !== "string" ||
+      !("DomainName" in value) ||
+      typeof value.DomainName !== "string"
+    )
+      throw new Error("Invalid preview parameter properties");
+    return {
+      ...properties,
+      StoreArn: value.StoreArn,
+      DomainName: value.DomainName,
+    };
+  }
+  return properties;
 }

@@ -2,11 +2,6 @@ name: Deploy Preview Cache
 
 on:
   workflow_dispatch:
-    inputs:
-      build_run_id:
-        description: Successful Build Preview Cache run ID
-        type: string
-        required: true
 
 permissions:
   contents: read
@@ -16,7 +11,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build:
+    uses: ./.github/workflows/build-preview-cache.yml
+
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: preview-infrastructure
@@ -36,8 +35,6 @@ jobs:
         with:
           name: preview-cache
           path: ${{ runner.temp }}
-          run-id: ${{ inputs.build_run_id }}
-          github-token: ${{ github.token }}
 
       - name: Unpack deployment ZIP
         run: unzip -q "$RUNNER_TEMP/preview-cache.zip" -d "$RUNNER_TEMP/preview-cache"

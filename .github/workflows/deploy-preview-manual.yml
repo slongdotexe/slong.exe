@@ -12,16 +12,20 @@ on:
         type: choice
         options: [deploy, delete]
         required: true
-      build_run_id:
-        description: Successful Build Application run ID (deploy only)
-        type: string
-        required: false
 
 permissions:
   contents: read
 
 jobs:
+  build:
+    if: inputs.operation == 'deploy'
+    uses: ./.github/workflows/build-application.yml
+    with:
+      sha: ${{ format('refs/pull/{0}/head', inputs.pr_number) }}
+
   preview:
+    needs: build
+    if: ${{ always() && !cancelled() && (inputs.operation == 'delete' || needs.build.result == 'success') }}
     permissions:
       contents: read
       actions: read
@@ -29,5 +33,5 @@ jobs:
     uses: ./.github/workflows/deploy-preview.yml
     with:
       pr_number: ${{ inputs.pr_number }}
-      build_run_id: ${{ inputs.build_run_id }}
+      build_run_id: ${{ needs.build.outputs.run-id }}
       operation: ${{ inputs.operation }}

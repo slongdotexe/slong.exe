@@ -8,10 +8,6 @@ on:
         type: choice
         options: [development, production]
         required: true
-      build_run_id:
-        description: Successful Build Application run ID
-        type: string
-        required: true
       bootstrap:
         description: Initial deployment only, before the CDN publishes its SSM parameter
         type: boolean
@@ -25,7 +21,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build:
+    uses: ./.github/workflows/build-application.yml
+    with:
+      sha: ${{ github.sha }}
+
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: ${{ inputs.environment }}
@@ -46,8 +48,6 @@ jobs:
         with:
           name: application
           path: ${{ runner.temp }}
-          run-id: ${{ inputs.build_run_id }}
-          github-token: ${{ github.token }}
 
       - name: Unpack deployment ZIP
         run: unzip -q "$RUNNER_TEMP/application.zip" -d "$RUNNER_TEMP/application"

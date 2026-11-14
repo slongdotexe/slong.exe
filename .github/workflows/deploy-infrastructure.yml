@@ -8,10 +8,6 @@ on:
         type: choice
         options: [development, production, preview-infrastructure]
         required: true
-      build_run_id:
-        description: Successful Build CDN run ID
-        type: string
-        required: true
 
 permissions:
   contents: read
@@ -21,7 +17,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build:
+    uses: ./.github/workflows/build-cdn.yml
+
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: ${{ inputs.environment }}
@@ -43,8 +43,6 @@ jobs:
         with:
           name: cdn
           path: ${{ runner.temp }}
-          run-id: ${{ inputs.build_run_id }}
-          github-token: ${{ github.token }}
 
       - name: Unpack deployment ZIP
         run: unzip -q "$RUNNER_TEMP/cdn.zip" -d "$RUNNER_TEMP/cdn"

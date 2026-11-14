@@ -1,4 +1,6 @@
-name: Build Preview Cache
+name: "CI: Build Preview Cache"
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && 'Manual' || 'CI' }}: Build Preview Cache | ${{ github.ref_name }}
 
 on:
   workflow_dispatch:

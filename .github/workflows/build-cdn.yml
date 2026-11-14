@@ -1,4 +1,6 @@
-name: Build CDN
+name: "CI: Build CDN"
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && 'Manual' || 'CI' }}: Build CDN | ${{ github.ref_name }}
 
 on:
   workflow_dispatch:

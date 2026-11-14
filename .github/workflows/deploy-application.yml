@@ -1,4 +1,6 @@
-name: Deploy Application
+name: "Manual: Deploy Application"
+run-name: >-
+  Manual: Deploy Application | ${{ inputs.environment }} | ${{ github.ref_name }} | bootstrap=${{ inputs.bootstrap }}
 
 on:
   workflow_dispatch:

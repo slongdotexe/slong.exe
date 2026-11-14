@@ -1,4 +1,6 @@
-name: Deploy CDN
+name: "Manual: Deploy CDN"
+run-name: >-
+  Manual: Deploy CDN | ${{ inputs.environment }} | ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
@@ -104,7 +106,7 @@ jobs:
       - name: Summarize application authorization follow-up
         if: inputs.environment != 'preview-infrastructure'
         run: |
-          printf 'Deploy Application with bootstrap disabled to resolve the CDN parameter and update origin authorization.\n' \
+          printf 'Run Manual: Deploy Application with bootstrap disabled to resolve the CDN parameter and update origin authorization.\n' \
           >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize CDN outputs

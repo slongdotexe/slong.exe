@@ -1,4 +1,6 @@
-name: Deploy Preview Environment
+name: "CD: Manage Preview Environment"
+run-name: >-
+  CD: Preview Environment | ${{ inputs.operation }} | PR #${{ inputs.pr_number }}
 
 on:
   workflow_call:

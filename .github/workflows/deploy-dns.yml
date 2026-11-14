@@ -1,4 +1,6 @@
-name: Deploy DNS and Certificates
+name: "Manual: Deploy DNS and Certificates"
+run-name: >-
+  Manual: Deploy DNS and Certificates | ${{ inputs.environment }} | ${{ github.ref_name }}
 
 on:
   workflow_dispatch:

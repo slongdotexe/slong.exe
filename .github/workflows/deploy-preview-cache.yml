@@ -1,4 +1,6 @@
-name: Deploy Preview Cache
+name: "Manual: Deploy Preview Cache"
+run-name: >-
+  Manual: Deploy Preview Cache | preview-infrastructure | ${{ github.ref_name }}
 
 on:
   workflow_dispatch:

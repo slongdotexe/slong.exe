@@ -1,4 +1,6 @@
-name: Deploy PR Preview
+name: "Manual: Manage PR Preview"
+run-name: >-
+  Manual: PR Preview | ${{ inputs.operation }} | PR #${{ inputs.pr_number }} | ${{ github.ref_name }}
 
 on:
   workflow_dispatch:

@@ -1,4 +1,4 @@
-import { buildPreviewHandler } from "@slongdotexe/application-runtime/build";
+import { buildPreviewHandler } from "./build-routing-handler.mts";
 
 await buildPreviewHandler(
   new URL("../out/preview-routing-resource/", import.meta.url),

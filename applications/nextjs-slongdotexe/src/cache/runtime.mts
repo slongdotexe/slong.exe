@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { hash } from "@slongdotexe/application-runtime/cache";
+import { hash } from "./tags.mts";
 export {
   dynamo,
   hash,
   invalidated,
   invalidateTags,
   UpdateItemCommand,
-} from "@slongdotexe/application-runtime/cache";
+} from "./tags.mts";
 import {
   S3Client,
   GetObjectCommand,

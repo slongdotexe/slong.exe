@@ -3034,22 +3034,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@slongdotexe/application-runtime@workspace:*, @slongdotexe/application-runtime@workspace:libraries/application-runtime":
-  version: 0.0.0-use.local
-  resolution: "@slongdotexe/application-runtime@workspace:libraries/application-runtime"
-  dependencies:
-    "@aws-sdk/client-cloudfront-keyvaluestore": "npm:^3.1156.0"
-    "@aws-sdk/client-dynamodb": "npm:^3.1156.0"
-    "@aws-sdk/client-ssm": "npm:^3.1156.0"
-    "@aws-sdk/signature-v4a": "npm:^3.1138.0"
-    "@slongdotexe/tsconfig": "workspace:*"
-    "@types/aws-lambda": "npm:^8.10.159"
-    "@types/node": "npm:^24.0.0"
-    esbuild: "npm:^0.27.0"
-    typescript: "npm:^5.9.2"
-  languageName: unknown
-  linkType: soft
-
 "@slongdotexe/eslint-config@workspace:*, @slongdotexe/eslint-config@workspace:libraries/eslint-config-slongdotexe":
   version: 0.0.0-use.local
   resolution: "@slongdotexe/eslint-config@workspace:libraries/eslint-config-slongdotexe"
@@ -3098,7 +3082,6 @@ __metadata:
     "@aws-sdk/client-cloudfront-keyvaluestore": "npm:^3.1156.0"
     "@aws-sdk/client-ssm": "npm:^3.1156.0"
     "@aws-sdk/signature-v4a": "npm:^3.1138.0"
-    "@slongdotexe/application-runtime": "workspace:*"
     "@types/aws-lambda": "npm:^8.10.159"
     "@types/node": "npm:^24.0.0"
     esbuild: "npm:^0.27.0"
@@ -3112,16 +3095,20 @@ __metadata:
   resolution: "@slongdotexe/nextjs-slongdotexe@workspace:applications/nextjs-slongdotexe"
   dependencies:
     "@aws-lambda-powertools/logger": "npm:^2.36.0"
+    "@aws-sdk/client-cloudfront-keyvaluestore": "npm:^3.1156.0"
     "@aws-sdk/client-dynamodb": "npm:^3.1156.0"
     "@aws-sdk/client-s3": "npm:^3.1156.0"
+    "@aws-sdk/client-ssm": "npm:^3.1156.0"
+    "@aws-sdk/signature-v4a": "npm:^3.1138.0"
     "@aws/aws-distro-opentelemetry-node-autoinstrumentation": "npm:^0.13.0"
     "@opentelemetry/api": "npm:1.9.1"
-    "@slongdotexe/application-runtime": "workspace:*"
     "@tailwindcss/postcss": "npm:^4"
+    "@types/aws-lambda": "npm:^8.10.159"
     "@types/node": "npm:^20"
     "@types/react": "npm:^19"
     "@types/react-dom": "npm:^19"
     aws-rum-web: "npm:^3.2.1"
+    esbuild: "npm:^0.27.0"
     eslint: "npm:^9"
     eslint-config-next: "npm:16.3.5"
     next: "npm:16.3.5"
@@ -3157,7 +3144,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@slongdotexe/tsconfig@npm:~0.0.1, @slongdotexe/tsconfig@workspace:*, @slongdotexe/tsconfig@workspace:libraries/tsconfig-slongdotexe":
+"@slongdotexe/tsconfig@npm:~0.0.1, @slongdotexe/tsconfig@workspace:libraries/tsconfig-slongdotexe":
   version: 0.0.0-use.local
   resolution: "@slongdotexe/tsconfig@workspace:libraries/tsconfig-slongdotexe"
   languageName: unknown

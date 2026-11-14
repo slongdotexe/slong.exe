@@ -61,8 +61,6 @@ Resources:
           CACHE_TABLE_NAME:
             Fn::ImportValue: !Sub ${EphemeralStackName}-PreviewCacheTagTableName
           CACHE_KEY_PREFIX: !Sub ${EphemeralStackName}/previews/${PreviewName}
-          CACHE_REVALIDATION_QUEUE_URL:
-            Fn::ImportValue: !Sub ${EphemeralStackName}-PreviewRevalidationQueueUrl
           ENVIRONMENT: ephemeral
           LOG_LEVEL: DEBUG
         TelemetryConfig:

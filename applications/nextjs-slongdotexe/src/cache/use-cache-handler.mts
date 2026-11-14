@@ -131,8 +131,8 @@ const handler: CacheHandler = {
   async updateTags(tags) {
     if (!tags.length) return;
     const config = configuration();
-    if (config) await runtime.enqueue(config, tags);
     const timestamp = Date.now();
+    if (config) await runtime.invalidateTags(config, tags, timestamp);
     for (const tag of tags) expiredTags.set(tag, timestamp);
   },
 };

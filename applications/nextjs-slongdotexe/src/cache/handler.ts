@@ -81,7 +81,7 @@ export default class SharedCacheHandler implements CacheHandler {
 
   async revalidateTag(tags: string | string[]) {
     if (!this.config) return;
-    await runtime.enqueue(
+    await runtime.invalidateTags(
       this.config,
       typeof tags === "string" ? [tags] : tags,
     );

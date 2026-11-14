@@ -20,11 +20,6 @@ export async function buildCacheArtifact(outputDirectory: URL) {
     new URL("./template.yaml", import.meta.url),
     new URL("template.yaml", outputDirectory),
   );
-  await build({
-    ...bundleOptions,
-    entryPoints: [new URL("./src/worker.ts", import.meta.url).pathname],
-    outfile: new URL("worker/index.mjs", outputDirectory).pathname,
-  });
 }
 
 export async function buildPreviewHandler(outputDirectory: URL) {

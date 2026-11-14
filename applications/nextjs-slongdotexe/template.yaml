@@ -186,7 +186,7 @@ Resources:
                             Fn::ImportValue: !Sub ${SharedCacheStackName}-PreviewPrefix
                       - !Sub '${AWS::StackName}/*'
               - Effect: Allow
-                Action: dynamodb:GetItem
+                Action: [dynamodb:GetItem, dynamodb:UpdateItem]
                 Resource: !If
                   - IsPreview
                   - Fn::ImportValue: !Sub ${SharedCacheStackName}-TagTableArn
@@ -201,12 +201,6 @@ Resources:
                           - Prefix:
                               Fn::ImportValue: !Sub ${SharedCacheStackName}-PreviewPrefix
                         - !Sub '${AWS::StackName}#tag#*'
-              - Effect: Allow
-                Action: sqs:SendMessage
-                Resource: !If
-                  - IsPreview
-                  - Fn::ImportValue: !Sub ${SharedCacheStackName}-QueueArn
-                  - !GetAtt CacheStack.Outputs.QueueArn
               - Effect: Allow
                 Action: xray:PutTraceSegments
                 Resource: '*'
@@ -270,10 +264,6 @@ Resources:
             - Prefix:
                 Fn::ImportValue: !Sub ${SharedCacheStackName}-PreviewPrefix
           - !Ref AWS::StackName
-        CACHE_REVALIDATION_QUEUE_URL: !If
-          - IsPreview
-          - Fn::ImportValue: !Sub ${SharedCacheStackName}-QueueUrl
-          - !GetAtt CacheStack.Outputs.QueueUrl
         ENVIRONMENT: !Ref Environment
         LOG_LEVEL: !Ref LogLevel
         RUM_APP_MONITOR_ID: !If [EnableRum, !GetAtt RumAppMonitor.Id, !Ref 'AWS::NoValue']
@@ -393,12 +383,6 @@ Outputs:
   CacheTagTableName:
     Condition: OwnsCache
     Value: !GetAtt CacheStack.Outputs.TagTableName
-  CacheRevalidationQueueUrl:
-    Condition: OwnsCache
-    Value: !GetAtt CacheStack.Outputs.QueueUrl
-  CacheRevalidationDeadLetterQueueUrl:
-    Condition: OwnsCache
-    Value: !GetAtt CacheStack.Outputs.DeadLetterQueueUrl
   WebAppUrl:
     Value: !Sub https://${WebAppFunctionEndpoint.DomainName}
   WebAppLogGroupName:

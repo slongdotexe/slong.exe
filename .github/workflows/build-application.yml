@@ -1,4 +1,6 @@
-name: Build Application
+name: "CI: Build Application"
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && 'Manual' || 'CI' }}: Build Application | ${{ inputs.sha }}
 
 on:
   workflow_dispatch:

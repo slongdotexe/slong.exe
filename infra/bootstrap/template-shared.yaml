@@ -1,13 +1,23 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Shared artifact storage and GitHub OIDC with isolated development and production deployment roles.
+Description: GitHub OIDC and isolated deployment roles using externally managed artifact storage.
 
 Parameters:
+  Artifacts:
+    Type: String
+    Description: Regional artifact bucket owned by the template-s3 stack.
+    AllowedPattern: '[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]'
   GitHubOwner:
     Type: String
     AllowedPattern: '[A-Za-z0-9-]+'
   GitHubRepository:
     Type: String
     AllowedPattern: '[A-Za-z0-9_.-]+'
+  GitHubOwnerId:
+    Type: String
+    AllowedPattern: '[0-9]+'
+  GitHubRepositoryId:
+    Type: String
+    AllowedPattern: '[0-9]+'
   ProjectPrefix:
     Type: String
     Default: sam-nextjs-slongdotexe
@@ -28,48 +38,6 @@ Resources:
       Url: https://token.actions.githubusercontent.com
       ClientIdList: [ sts.amazonaws.com ]
 
-  Artifacts:
-    Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      VersioningConfiguration:
-        Status: Enabled
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      OwnershipControls:
-        Rules:
-          - ObjectOwnership: BucketOwnerEnforced
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      LifecycleConfiguration:
-        Rules:
-          - Id: CleanOldArtifactVersions
-            Status: Enabled
-            NoncurrentVersionExpiration:
-              NoncurrentDays: 90
-            AbortIncompleteMultipartUpload:
-              DaysAfterInitiation: 7
-
-  ArtifactsPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref Artifacts
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Deny
-            Principal: '*'
-            Action: s3:*
-            Resource: [ !GetAtt Artifacts.Arn, !Sub '${Artifacts.Arn}/*' ]
-            Condition:
-              Bool:
-                aws:SecureTransport: 'false'
   developmentRuntimePermissionsBoundary:
     Type: AWS::IAM::ManagedPolicy
     DeletionPolicy: Delete
@@ -301,7 +269,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:development'
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepository}@${GitHubRepositoryId}:environment:development'
       Policies:
         - PolicyName: DeployApplication
           PolicyDocument:
@@ -590,7 +558,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:production'
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepository}@${GitHubRepositoryId}:environment:production'
       Policies:
         - PolicyName: DeployApplication
           PolicyDocument:
@@ -718,6 +686,9 @@ Resources:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
+            Action: cloudformation:CreateChangeSet
+            Resource: !Sub 'arn:${AWS::Partition}:cloudformation:us-east-1:aws:transform/Include'
+          - Effect: Allow
             Action: cloudfront:CreateDistribution
             Resource: '*'
             Condition:
@@ -825,7 +796,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:development'
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepository}@${GitHubRepositoryId}:environment:development'
       Policies:
         - PolicyName: DeployInfrastructure
           PolicyDocument:
@@ -902,7 +873,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:production'
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepository}@${GitHubRepositoryId}:environment:production'
       Policies:
         - PolicyName: DeployInfrastructure
           PolicyDocument:
@@ -998,7 +969,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: [s3:GetObject]
-                Resource: !Sub '${Artifacts.Arn}/${ProjectPrefix}/preview/*'
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${ProjectPrefix}/preview/*'
               - Effect: Allow
                 Action: [ssm:GetParameter, ssm:GetParameters]
                 Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slongdotexe/ephemeral/cdn/*'
@@ -1050,7 +1021,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:preview'
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepository}@${GitHubRepositoryId}:environment:preview'
       Policies:
         - PolicyName: DeployPreview
           PolicyDocument:
@@ -1073,16 +1044,16 @@ Resources:
                     iam:PassedToService: cloudformation.amazonaws.com
               - Effect: Allow
                 Action: [s3:GetBucketLocation, s3:GetBucketVersioning]
-                Resource: !GetAtt Artifacts.Arn
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}'
               - Effect: Allow
                 Action: s3:ListBucket
-                Resource: !GetAtt Artifacts.Arn
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}'
                 Condition:
                   StringLike:
                     s3:prefix: !Sub '${ProjectPrefix}/preview*'
               - Effect: Allow
                 Action: [s3:GetObject, s3:PutObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts]
-                Resource: !Sub '${Artifacts.Arn}/${ProjectPrefix}/preview/*'
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${ProjectPrefix}/preview/*'
 
   PreviewInfrastructureExecutionRole:
     Type: AWS::IAM::Role
@@ -1107,7 +1078,7 @@ Resources:
               - Effect: Allow
                 Action: s3:GetObject
                 Resource:
-                  - !Sub '${Artifacts.Arn}/${ProjectPrefix}/preview-infrastructure/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${ProjectPrefix}/preview-infrastructure/*'
                   - !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1/${ProjectPrefix}/preview-infrastructure/*'
               - Effect: Allow
                 Action: [s3:CreateBucket, s3:DeleteBucket, s3:GetBucketLocation, s3:GetBucketPolicy, s3:PutBucketPolicy, s3:DeleteBucketPolicy, s3:GetEncryptionConfiguration, s3:PutEncryptionConfiguration, s3:GetBucketPublicAccessBlock, s3:PutBucketPublicAccessBlock, s3:GetBucketTagging, s3:PutBucketTagging, s3:GetBucketVersioning, s3:GetBucketAcl, s3:GetBucketOwnershipControls]
@@ -1140,7 +1111,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:preview-infrastructure'
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepository}@${GitHubRepositoryId}:environment:preview-infrastructure'
       Policies:
         - PolicyName: DeploySharedPreviewInfrastructure
           PolicyDocument:
@@ -1168,12 +1139,12 @@ Resources:
               - Effect: Allow
                 Action: [s3:GetBucketLocation, s3:GetBucketVersioning]
                 Resource:
-                  - !GetAtt Artifacts.Arn
+                  - !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}'
                   - !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1'
               - Effect: Allow
                 Action: s3:ListBucket
                 Resource:
-                  - !GetAtt Artifacts.Arn
+                  - !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}'
                   - !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1'
                 Condition:
                   StringLike:
@@ -1183,7 +1154,7 @@ Resources:
               - Effect: Allow
                 Action: [s3:GetObject, s3:PutObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts]
                 Resource:
-                  - !Sub '${Artifacts.Arn}/${ProjectPrefix}/preview-infrastructure/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${ProjectPrefix}/preview-infrastructure/*'
                   - !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1/${ProjectPrefix}/preview-infrastructure/*'
 
 Outputs:

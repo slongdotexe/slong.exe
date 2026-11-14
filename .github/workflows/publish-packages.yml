@@ -1,4 +1,6 @@
-name: Publish Packages to GitHub Packages
+name: "Manual: Publish GitHub Packages"
+run-name: >-
+  Manual: Publish GitHub Packages | ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
@@ -26,9 +28,9 @@ jobs:
       - name: Setup Node & Registry
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@slongdotexe'
+          node-version: "20.x"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@slongdotexe"
 
       - name: Publish TSConfig
         run: yarn workspace @slongdotexe/tsconfig npm publish

@@ -1,4 +1,6 @@
-name: Deploy CDN
+name: "Manual: Deploy CDN"
+run-name: >-
+  Manual: Deploy CDN | ${{ inputs.environment }} | ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
@@ -7,10 +9,6 @@ on:
         description: CDN target
         type: choice
         options: [development, production, preview-infrastructure]
-        required: true
-      build_run_id:
-        description: Successful Build CDN run ID
-        type: string
         required: true
 
 permissions:
@@ -21,7 +19,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build:
+    uses: ./.github/workflows/build-cdn.yml
+
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: ${{ inputs.environment }}
@@ -43,12 +45,9 @@ jobs:
         with:
           name: cdn
           path: ${{ runner.temp }}
-          run-id: ${{ inputs.build_run_id }}
-          github-token: ${{ github.token }}
 
       - name: Unpack deployment ZIP
         run: unzip -q "$RUNNER_TEMP/cdn.zip" -d "$RUNNER_TEMP/cdn"
-      - uses: aws-actions/setup-sam@v2
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_INFRA_DEPLOY_ROLE_ARN }}
@@ -106,7 +105,7 @@ jobs:
       - name: Summarize application authorization follow-up
         if: inputs.environment != 'preview-infrastructure'
         run: |
-          printf 'Deploy Application with bootstrap disabled to resolve the CDN parameter and update origin authorization.\n' \
+          printf 'Run Manual: Deploy Application with bootstrap disabled to resolve the CDN parameter and update origin authorization.\n' \
           >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize CDN outputs

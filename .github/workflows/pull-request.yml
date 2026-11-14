@@ -1,4 +1,6 @@
-name: Pull Request
+name: "CD: PR Preview"
+run-name: >-
+  CD: PR Preview | ${{ github.event.action == 'closed' && 'delete' || 'deploy' }} | PR #${{ github.event.pull_request.number }} | ${{ github.head_ref }}
 
 on:
   pull_request:

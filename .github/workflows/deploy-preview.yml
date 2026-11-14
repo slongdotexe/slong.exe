@@ -1,4 +1,6 @@
-name: Deploy Preview Environment
+name: "CD: Manage Preview Environment"
+run-name: >-
+  CD: Preview Environment | ${{ inputs.operation }} | PR #${{ inputs.pr_number }}
 
 on:
   workflow_call:
@@ -57,7 +59,6 @@ jobs:
       - name: Unpack deployment ZIP
         run: unzip -q "$RUNNER_TEMP/application.zip" -d "$RUNNER_TEMP/application"
 
-      - uses: aws-actions/setup-sam@v2
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}

@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "test": "node --test src/cache/*.test.mjs",
+    "build:cdn": "node infra/cdn-cloudfront/scripts/build-cloudfront-handler.mts && node infra/cdn-cloudfront/scripts/build-preview-handler.mts",
+    "test": "node --test src/cache/*.test.mjs infra/cdn-cloudfront/scripts/*.test.mjs",
+    "typecheck:cdn": "tsc --project infra/tsconfig.json",
     "start": "next start",
     "lint": "eslint"
   },
@@ -33,7 +35,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "yaml": "^2.8.1"
   },
   "packageManager": "yarn@4.18.0"
 }

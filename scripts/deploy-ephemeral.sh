@@ -41,7 +41,7 @@ bash infra/common/templates/dns-certificates/scripts/deploy.sh \
 bash infra/common/templates/cache/scripts/deploy.sh \
   --profile "$PROFILE" --region "$REGION"
 
-bash applications/nextjs-slongdotexe/infra/templates/cdn-cloudfront/scripts/deploy.sh \
+bash applications/nextjs-slongdotexe/infra/cdn-cloudfront/scripts/deploy.sh \
   --environment ephemeral --profile "$PROFILE" \
   --app-region "$REGION" \
   --dns-stack-name "$DNS_STACK_NAME"

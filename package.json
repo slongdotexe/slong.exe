@@ -23,7 +23,6 @@
   },
   "workspaces": [
     "./applications/*",
-    "./applications/*/infra",
     "./libraries/*",
     "./infra/*"
   ]

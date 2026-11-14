@@ -34,14 +34,14 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
-bash infra/dns-certificates/scripts/deploy.sh \
+bash infra/common/templates/dns-certificates/scripts/deploy.sh \
   --environment ephemeral --profile "$PROFILE" --domain-name "$DOMAIN_NAME" \
   --stack-name "$DNS_STACK_NAME"
 
-bash libraries/application-infrastructure/scripts/deploy.sh \
+bash infra/common/templates/cache/scripts/deploy.sh \
   --profile "$PROFILE" --region "$REGION"
 
-bash infra/cdn-cloudfront/scripts/deploy.sh \
+bash applications/nextjs-slongdotexe/infra/cdn-cloudfront/scripts/deploy.sh \
   --environment ephemeral --profile "$PROFILE" \
   --app-region "$REGION" \
   --dns-stack-name "$DNS_STACK_NAME"

@@ -30,7 +30,7 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
-bash infra/dns-certificates/scripts/deploy.sh \
+bash infra/common/templates/dns-certificates/scripts/deploy.sh \
   --environment development \
   --profile "$PROFILE" \
   --domain-name "$DOMAIN_NAME"
@@ -38,11 +38,11 @@ bash infra/dns-certificates/scripts/deploy.sh \
 bash applications/nextjs-slongdotexe/scripts/deploy.sh \
   --environment development --profile "$PROFILE"
 
-bash infra/cdn-cloudfront/scripts/deploy.sh \
+bash applications/nextjs-slongdotexe/infra/cdn-cloudfront/scripts/deploy.sh \
   --environment development \
   --profile "$PROFILE" \
   --app-stack-name sam-nextjs-slongdotexe-development \
   --app-region "$REGION"
 
-printf '\nSet CloudFrontDistributionId in the development deployment parameters in applications/nextjs-slongdotexe/samconfig.toml, then run:\n'
+printf '\nSet CloudFrontDistributionId in the development deployment parameters in applications/nextjs-slongdotexe/infra/application/samconfig.toml, then run:\n'
 printf 'bash applications/nextjs-slongdotexe/scripts/deploy.sh --skip-build --environment development --profile %q\n' "$PROFILE"

@@ -45,7 +45,7 @@ jobs:
         if: inputs.environment == 'development'
         run: |
           aws cloudformation deploy \
-            --template-file infra/dns-certificates/template.yaml \
+            --template-file infra/common/templates/dns-certificates/template.yaml \
             --stack-name sam-nextjs-slongdotexe-development-dns \
             --region us-east-1 \
             --role-arn "$EXECUTION_ROLE" \
@@ -60,7 +60,7 @@ jobs:
         if: inputs.environment == 'production'
         run: |
           aws cloudformation deploy \
-            --template-file infra/dns-certificates/template.yaml \
+            --template-file infra/common/templates/dns-certificates/template.yaml \
             --stack-name sam-nextjs-slongdotexe-production-dns \
             --region us-east-1 \
             --role-arn "$EXECUTION_ROLE" \

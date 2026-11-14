@@ -36,10 +36,10 @@ jobs:
         run: yarn install --immutable
 
       - name: Build preview cache infrastructure
-        run: yarn workspace @slongdotexe/application-infrastructure build
+        run: yarn workspace @slongdotexe/infra-common build:cache
 
       - name: Create deployment ZIP
-        working-directory: libraries/application-infrastructure/out/cache
+        working-directory: infra/common/out/cache
         run: zip --recurse-paths --symlinks "$RUNNER_TEMP/preview-cache.zip" .
 
       - name: Upload preview cache artifact

@@ -1,0 +1,12 @@
+{
+  "name": "@slongdotexe/infra-common",
+  "version": "0.0.2",
+  "type": "module",
+  "scripts": {
+    "build:cache": "node build.mts cache",
+    "test": "node templates/iam/scripts/validate-policies.mjs"
+  },
+  "devDependencies": {
+    "yaml": "^2.8.1"
+  }
+}

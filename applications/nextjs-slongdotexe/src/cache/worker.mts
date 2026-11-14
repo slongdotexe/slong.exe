@@ -1,6 +1,6 @@
 import type { SQSEvent, SQSBatchResponse } from "aws-lambda";
 
-import { invalidateTags } from "./tags.ts";
+import { invalidateTags } from "./tags.mts";
 
 export async function handler(event: SQSEvent): Promise<SQSBatchResponse> {
   const failures = await event.Records.reduce<

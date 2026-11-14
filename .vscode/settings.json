@@ -4,6 +4,7 @@
   "files.associations": {
     "**/applications/*/template*.yaml": "cloudformation",
     "**/infra/*/template*.yaml": "cloudformation",
+    "**/infra/*/*/template*.yaml": "cloudformation",
     "**/libraries/*/template*.yaml": "cloudformation"
   },
 }

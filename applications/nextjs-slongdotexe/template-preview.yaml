@@ -117,6 +117,10 @@ Resources:
 
   PreviewRoutingFunction:
     Type: AWS::Lambda::Function
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks: [W3002]
     Properties:
       FunctionName: !Sub ${AWS::StackName}-preview-routing
       Runtime: nodejs24.x

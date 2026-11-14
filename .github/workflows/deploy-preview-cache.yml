@@ -19,13 +19,16 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    environment: ephemeral
+    environment: preview-infrastructure
     permissions:
       contents: read
       actions: read
       id-token: write
     env:
       APP_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      EXECUTION_ROLE: ${{ vars.AWS_INFRA_CLOUDFORMATION_ROLE_ARN }}
+      ARTIFACT_BUCKET: ${{ vars.AWS_ARTIFACT_BUCKET }}
+      ARTIFACT_PREFIX: ${{ vars.AWS_ARTIFACT_PREFIX }}
       AWS_PAGER: ""
     steps:
       - name: Download preview cache artifact
@@ -39,9 +42,10 @@ jobs:
       - name: Unpack deployment ZIP
         run: unzip -q "$RUNNER_TEMP/preview-cache.zip" -d "$RUNNER_TEMP/preview-cache"
 
+      - uses: aws-actions/setup-sam@v2
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_INFRA_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.APP_REGION }}
 
       - name: Deploy shared preview cache
@@ -52,7 +56,9 @@ jobs:
             --config-env ci \
             --stack-name sam-nextjs-slongdotexe-preview-cache \
             --region "$APP_REGION" \
-            --resolve-s3 \
+            --role-arn "$EXECUTION_ROLE" \
+            --s3-bucket "$ARTIFACT_BUCKET" \
+            --s3-prefix "$ARTIFACT_PREFIX" \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --capabilities CAPABILITY_IAM \

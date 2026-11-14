@@ -36,6 +36,9 @@ jobs:
     env:
       TARGET: ${{ inputs.environment }}
       APP_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      EXECUTION_ROLE: ${{ vars.AWS_CLOUDFORMATION_ROLE_ARN }}
+      ARTIFACT_BUCKET: ${{ vars.AWS_ARTIFACT_BUCKET }}
+      ARTIFACT_PREFIX: ${{ vars.AWS_ARTIFACT_PREFIX }}
       AWS_PAGER: ""
     steps:
       - name: Download application artifact
@@ -58,12 +61,18 @@ jobs:
       - name: Bootstrap application
         if: ${{ inputs.bootstrap }}
         working-directory: ${{ runner.temp }}/application
-        run: sam deploy --config-env "$TARGET-bootstrap" --region "$APP_REGION"
+        run: |
+          sam deploy --config-env "$TARGET-bootstrap" --region "$APP_REGION" \
+            --role-arn "$EXECUTION_ROLE" \
+            --s3-bucket "$ARTIFACT_BUCKET" --s3-prefix "$ARTIFACT_PREFIX"
 
       - name: Deploy application
         if: ${{ !inputs.bootstrap }}
         working-directory: ${{ runner.temp }}/application
-        run: sam deploy --config-env "$TARGET" --region "$APP_REGION"
+        run: |
+          sam deploy --config-env "$TARGET" --region "$APP_REGION" \
+            --role-arn "$EXECUTION_ROLE" \
+            --s3-bucket "$ARTIFACT_BUCKET" --s3-prefix "$ARTIFACT_PREFIX"
 
       - name: Summarize application outputs
         run: |

@@ -23,6 +23,11 @@ Parameters:
   LogLevel:
     Type: String
     Default: INFO
+  RuntimePermissionsBoundaryArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '(^$|arn:[a-z-]+:iam::[0-9]{12}:policy/.+)'
+    Description: Bootstrap RuntimePermissionsBoundaryArn output; required when using its scoped execution role.
   ApplicationPath:
     Type: String
     Default: applications/nextjs-slongdotexe
@@ -56,6 +61,7 @@ Conditions:
   IsPreview: !Not [!Equals [!Ref PreviewName, '']]
   OwnsCache: !Equals [!Ref PreviewName, '']
   AuthorizeCloudFront: !Equals [!Ref EnableCloudFrontAuthorization, 'true']
+  HasRuntimePermissionsBoundary: !Not [!Equals [!Ref RuntimePermissionsBoundaryArn, '']]
   EnableRum: !And [!Condition OwnsCache, !Not [!Equals [!Ref RumDomainName, '']]]
 
 Rules:
@@ -80,6 +86,7 @@ Resources:
     Type: AWS::IAM::Role
     Condition: EnableRum
     Properties:
+      PermissionsBoundary: !If [HasRuntimePermissionsBoundary, !Ref RuntimePermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -138,6 +145,7 @@ Resources:
   WebAppRole:
     Type: AWS::IAM::Role
     Properties:
+      PermissionsBoundary: !If [HasRuntimePermissionsBoundary, !Ref RuntimePermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -309,6 +317,7 @@ Resources:
     Type: AWS::IAM::Role
     Condition: IsPreview
     Properties:
+      PermissionsBoundary: !If [HasRuntimePermissionsBoundary, !Ref RuntimePermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:

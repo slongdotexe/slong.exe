@@ -39,6 +39,10 @@ jobs:
     env:
       APP_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
       PREVIEW_NAME: pr-${{ inputs.pr_number }}
+      EXECUTION_ROLE: ${{ vars.AWS_CLOUDFORMATION_ROLE_ARN }}
+      ARTIFACT_BUCKET: ${{ vars.AWS_ARTIFACT_BUCKET }}
+      ARTIFACT_PREFIX: ${{ vars.AWS_ARTIFACT_PREFIX }}
+      RUNTIME_BOUNDARY: ${{ vars.AWS_RUNTIME_PERMISSIONS_BOUNDARY_ARN }}
       AWS_PAGER: ""
 
     steps:
@@ -66,7 +70,11 @@ jobs:
             --config-env preview \
             --stack-name "sam-nextjs-slongdotexe-$PREVIEW_NAME" \
             --region "$APP_REGION" \
+            --role-arn "$EXECUTION_ROLE" \
+            --s3-bucket "$ARTIFACT_BUCKET" \
+            --s3-prefix "$ARTIFACT_PREFIX" \
             --parameter-overrides \
+              "RuntimePermissionsBoundaryArn=$RUNTIME_BOUNDARY" \
               Environment=ephemeral \
               LogLevel=DEBUG \
               EndpointAuthType=IamAuth \
@@ -98,6 +106,7 @@ jobs:
       id-token: write
     env:
       PREVIEW_NAME: pr-${{ inputs.pr_number }}
+      EXECUTION_ROLE: ${{ vars.AWS_CLOUDFORMATION_ROLE_ARN }}
       AWS_PAGER: ""
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
@@ -108,6 +117,7 @@ jobs:
         run: >-
           aws cloudformation delete-stack
           --stack-name "sam-nextjs-slongdotexe-$PREVIEW_NAME"
+          --role-arn "$EXECUTION_ROLE"
       - name: Wait for preview deletion
         run: >-
           aws cloudformation wait stack-delete-complete

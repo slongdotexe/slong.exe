@@ -229,23 +229,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@aws-sdk/client-sqs@npm:^3.1156.0":
-  version: 3.1156.0
-  resolution: "@aws-sdk/client-sqs@npm:3.1156.0"
-  dependencies:
-    "@aws-sdk/core": "npm:^3.978.5"
-    "@aws-sdk/credential-provider-node": "npm:^3.972.88"
-    "@aws-sdk/middleware-sdk-sqs": "npm:^3.972.46"
-    "@aws-sdk/types": "npm:^3.975.0"
-    "@smithy/core": "npm:^3.36.1"
-    "@smithy/fetch-http-handler": "npm:^5.8.0"
-    "@smithy/node-http-handler": "npm:^4.12.1"
-    "@smithy/types": "npm:^4.19.0"
-    tslib: "npm:^2.6.2"
-  checksum: 10c0/0a0d6b11fce109ca1728b6460c8613f5386f94e0fd4854f78809e33ac49c797ac1aec3ede4c15032d1c2d89bffc5ecb99fabf0d3c3b786889f19a532c1a24e48
-  languageName: node
-  linkType: hard
-
 "@aws-sdk/client-ssm@npm:^3.1156.0":
   version: 3.1156.0
   resolution: "@aws-sdk/client-ssm@npm:3.1156.0"
@@ -478,18 +461,6 @@ __metadata:
     "@smithy/types": "npm:^4.19.0"
     tslib: "npm:^2.6.2"
   checksum: 10c0/f7e168125421a906e6c8cf128e25a6a37d08b30fd78ec00c8f4ef24e3077723d9ef6fab726613b809ea0c1f7e70fe7f940a7ec4fb0e93896a81ba8dc0a4d3c62
-  languageName: node
-  linkType: hard
-
-"@aws-sdk/middleware-sdk-sqs@npm:^3.972.46":
-  version: 3.972.46
-  resolution: "@aws-sdk/middleware-sdk-sqs@npm:3.972.46"
-  dependencies:
-    "@aws-sdk/types": "npm:^3.975.0"
-    "@smithy/core": "npm:^3.36.1"
-    "@smithy/types": "npm:^4.19.0"
-    tslib: "npm:^2.6.2"
-  checksum: 10c0/8441dcebd318d4241f053895d75313fc3177a3bbce3dc792b2bb852fb4fda921ba57009553e6aa50462a71ba3a01b93c10b6d494884ba6848d803a3f02d2d1dc
   languageName: node
   linkType: hard
 
@@ -3112,6 +3083,16 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@slongdotexe/infra-bootstrap@workspace:infra/bootstrap":
+  version: 0.0.0-use.local
+  resolution: "@slongdotexe/infra-bootstrap@workspace:infra/bootstrap"
+  dependencies:
+    "@types/node": "npm:^24.0.0"
+    esbuild: "npm:^0.27.0"
+    typescript: "npm:^5.9.2"
+  languageName: unknown
+  linkType: soft
+
 "@slongdotexe/infra-cdn-cloudfront@workspace:infra/cdn-cloudfront":
   version: 0.0.0-use.local
   resolution: "@slongdotexe/infra-cdn-cloudfront@workspace:infra/cdn-cloudfront"
@@ -3143,7 +3124,6 @@ __metadata:
     "@aws-lambda-powertools/logger": "npm:^2.36.0"
     "@aws-sdk/client-dynamodb": "npm:^3.1156.0"
     "@aws-sdk/client-s3": "npm:^3.1156.0"
-    "@aws-sdk/client-sqs": "npm:^3.1156.0"
     "@aws/aws-distro-opentelemetry-node-autoinstrumentation": "npm:^0.13.0"
     "@opentelemetry/api": "npm:1.9.1"
     "@slongdotexe/application-infrastructure": "workspace:*"

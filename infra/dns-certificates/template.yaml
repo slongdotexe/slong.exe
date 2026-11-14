@@ -2,6 +2,14 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Public DNS delegation and CloudFront viewer certificate; deploy in us-east-1.
 
 Parameters:
+  Environment:
+    Type: String
+    Default: development
+    AllowedValues: [development, production]
+  ProjectPrefix:
+    Type: String
+    Default: sam-nextjs-slongdotexe
+    AllowedPattern: '[a-z][a-z0-9-]{0,24}[a-z0-9]'
   DomainName:
     Type: String
     AllowedPattern: '[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+'
@@ -29,6 +37,11 @@ Resources:
     Condition: UseRoute53
     Properties:
       Name: !Ref DomainName
+      HostedZoneTags:
+        - Key: Project
+          Value: !Ref ProjectPrefix
+        - Key: DeploymentEnvironment
+          Value: !Ref Environment
 
   ViewerCertificate:
     Type: AWS::CertificateManager::Certificate
@@ -36,6 +49,11 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       DomainName: !Ref DomainName
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectPrefix
+        - Key: DeploymentEnvironment
+          Value: !Ref Environment
       SubjectAlternativeNames: !If [UseWildcard, [!Sub '*.${DomainName}'], !Ref 'AWS::NoValue']
       ValidationMethod: DNS
       DomainValidationOptions: !If

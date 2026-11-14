@@ -1,9 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Regional artifact storage for CloudFront deployment code in us-east-1.
 Parameters:
-  ProjectPrefix:
+  RepositoryPrefix:
     Type: String
-    Default: sam-nextjs-slongdotexe
+    Default: slongdotexe
     AllowedPattern: '[a-z][a-z0-9-]{0,24}[a-z0-9]'
 Resources:
   Artifacts:
@@ -11,7 +11,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      BucketName: !Sub '${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1'
+      BucketName: !Sub '${RepositoryPrefix}-artifacts-${AWS::AccountId}-us-east-1'
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:

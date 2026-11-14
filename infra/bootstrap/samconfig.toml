@@ -8,48 +8,7 @@ profile = "slongdotexe"
 resolve_s3 = false
 no_fail_on_empty_changeset = true
 confirm_changeset = false
-parameter_overrides = ["ProjectPrefix=sam-nextjs-slongdotexe"]
-
-[default.deploy.parameters]
-template_file = "template-shared.yaml"
-resolve_s3 = false
-s3_bucket = "sam-nextjs-slongdotexe-templates-206665440523-ap-southeast-2"
-s3_prefix = "bootstrap/shared"
-stack_name = "sam-nextjs-slongdotexe-bootstrap"
-region = "ap-southeast-2"
-profile = "slongdotexe"
-capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
-no_fail_on_empty_changeset = true
-confirm_changeset = false
-parameter_overrides = [
-    "Artifacts=sam-nextjs-slongdotexe-templates-206665440523-ap-southeast-2",
-    "GitHubOwner=slongdotexe",
-    "GitHubRepository=slong.exe",
-    "GitHubOwnerId=98933706",
-    "GitHubRepositoryId=1440420167",
-    "ProjectPrefix=sam-nextjs-slongdotexe",
-    "ExistingGitHubOidcProviderArn=''",
-]
-
-[ci-shared.deploy.parameters]
-template_file = "template-shared.yaml"
-resolve_s3 = false
-s3_bucket = "sam-nextjs-slongdotexe-templates-206665440523-ap-southeast-2"
-s3_prefix = "bootstrap/shared"
-stack_name = "sam-nextjs-slongdotexe-bootstrap"
-region = "ap-southeast-2"
-capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
-no_fail_on_empty_changeset = true
-confirm_changeset = false
-parameter_overrides = [
-    "Artifacts=sam-nextjs-slongdotexe-templates-206665440523-ap-southeast-2",
-    "GitHubOwner=slongdotexe",
-    "GitHubRepository=slong.exe",
-    "GitHubOwnerId=98933706",
-    "GitHubRepositoryId=1440420167",
-    "ProjectPrefix=sam-nextjs-slongdotexe",
-    "ExistingGitHubOidcProviderArn=''",
-]
+parameter_overrides = ["RepositoryPrefix=slongdotexe"]
 
 [ci-edge.deploy.parameters]
 template_file = "template-edge.yaml"
@@ -57,4 +16,4 @@ stack_name = "sam-nextjs-slongdotexe-bootstrap-edge"
 region = "us-east-1"
 no_fail_on_empty_changeset = true
 confirm_changeset = false
-parameter_overrides = ["ProjectPrefix=sam-nextjs-slongdotexe"]
+parameter_overrides = ["RepositoryPrefix=slongdotexe"]

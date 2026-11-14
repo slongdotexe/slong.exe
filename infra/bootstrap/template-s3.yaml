@@ -2,9 +2,9 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Shared regional storage for bootstrap templates and deployment artifacts.
 
 Parameters:
-  ProjectPrefix:
+  RepositoryPrefix:
     Type: String
-    Default: sam-nextjs-slongdotexe
+    Default: slongdotexe
     AllowedPattern: '[a-z][a-z0-9-]{0,24}[a-z0-9]'
 
 Resources:
@@ -13,7 +13,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      BucketName: !Sub '${ProjectPrefix}-templates-${AWS::AccountId}-${AWS::Region}'
+      BucketName: !Sub '${RepositoryPrefix}-templates-${AWS::AccountId}-${AWS::Region}'
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:

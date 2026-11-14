@@ -56,7 +56,7 @@ jobs:
       - name: Build cache infrastructure
         run: >-
           yarn workspace @slongdotexe/infra-common build:cache
-          "$PWD/applications/nextjs-slongdotexe/infra/templates/application/out/cache"
+          "$PWD/applications/nextjs-slongdotexe/out/cache"
 
       - name: Build preview registration handler
         run: node applications/nextjs-slongdotexe/scripts/build-preview-handler.mts
@@ -68,7 +68,7 @@ jobs:
         working-directory: applications/nextjs-slongdotexe
         run: |
           test -f .next/standalone/applications/nextjs-slongdotexe/server.js
-          artifact=infra/templates/application/out/web-function
+          artifact=out/web-function
           mkdir -p "$artifact"
           cp -R .next/standalone/. "$artifact/"
           cp -R .next/static "$artifact/applications/nextjs-slongdotexe/.next/static"
@@ -76,7 +76,7 @@ jobs:
           find "$artifact" -type f \( -name '.env' -o -name '.env.*' \) -delete
 
       - name: Create deployment ZIP
-        working-directory: applications/nextjs-slongdotexe/infra/templates/application
+        working-directory: applications/nextjs-slongdotexe
         run: zip --recurse-paths --symlinks "$RUNNER_TEMP/application.zip" template.yaml samconfig.toml out
 
       - name: Upload application artifact

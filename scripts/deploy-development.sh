@@ -44,5 +44,5 @@ bash applications/nextjs-slongdotexe/infra/templates/cdn-cloudfront/scripts/depl
   --app-stack-name sam-nextjs-slongdotexe-development \
   --app-region "$REGION"
 
-printf '\nSet CloudFrontDistributionId in the development deployment parameters in applications/nextjs-slongdotexe/infra/templates/application/samconfig.toml, then run:\n'
+printf '\nSet CloudFrontDistributionId in the development deployment parameters in applications/nextjs-slongdotexe/samconfig.toml, then run:\n'
 printf 'bash applications/nextjs-slongdotexe/scripts/deploy.sh --skip-build --environment development --profile %q\n' "$PROFILE"

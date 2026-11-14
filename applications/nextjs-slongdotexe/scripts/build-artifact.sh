@@ -11,7 +11,7 @@ esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../../.."
 APP=applications/nextjs-slongdotexe
-ARTIFACT="$APP/infra/templates/application/out/web-function"
+ARTIFACT="$APP/out/web-function"
 
 if [[ "$SKIP_BUILD" == true ]]; then
   if [[ ! -f "$ARTIFACT/$APP/server.js" ]]; then

@@ -48,7 +48,7 @@ DISTRIBUTION_ID="${CLOUDFRONT_DISTRIBUTION_ID:?Set CLOUDFRONT_DISTRIBUTION_ID to
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../../.."
 APP=applications/nextjs-slongdotexe
-ARTIFACT="$APP/infra/templates/application/out/web-function"
+ARTIFACT="$APP/out/web-function"
 STACK_NAME="sam-nextjs-slongdotexe-$PREVIEW_NAME"
 export AWS_PAGER=''
 
@@ -66,8 +66,8 @@ fi
 
 node "$SCRIPT_DIR/build-preview-handler.mts"
 printf 'Deploying %s application and registering its CloudFront route...\n' "$PREVIEW_NAME"
-sam deploy --template-file "$APP/infra/templates/application/template.yaml" \
-  --config-file "$SCRIPT_DIR/../infra/templates/application/samconfig.toml" --config-env preview \
+sam deploy --template-file "$APP/template.yaml" \
+  --config-file "$SCRIPT_DIR/../samconfig.toml" --config-env preview \
   --stack-name "$STACK_NAME" --region "$REGION" --profile "$PROFILE" \
   --parameter-overrides "Environment=ephemeral" "LogLevel=DEBUG" "EndpointAuthType=IamAuth" \
     "SharedCacheStackName=$SHARED_CACHE_STACK" "CloudFrontDistributionId=$DISTRIBUTION_ID" \

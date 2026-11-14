@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "yarn workspace @slongdotexe/application-infrastructure build:runtime && next dev",
-    "build": "yarn workspace @slongdotexe/application-infrastructure build:runtime && next build",
+    "dev": "yarn workspace @slongdotexe/application-runtime build && next dev",
+    "build": "yarn workspace @slongdotexe/application-runtime build && next build",
     "start": "next start",
     "lint": "eslint"
   },
@@ -14,7 +14,7 @@
     "@aws-sdk/client-s3": "^3.1156.0",
     "@aws/aws-distro-opentelemetry-node-autoinstrumentation": "^0.13.0",
     "@opentelemetry/api": "1.9.1",
-    "@slongdotexe/application-infrastructure": "workspace:*",
+    "@slongdotexe/application-runtime": "workspace:*",
     "aws-rum-web": "^3.2.1",
     "next": "16.3.5",
     "react": "19.2.8",

@@ -36,10 +36,10 @@ jobs:
         run: yarn install --immutable
 
       - name: Build CDN handlers
-        run: yarn workspace @slongdotexe/infra-cdn-cloudfront build
+        run: yarn workspace @slongdotexe/infra-nextjs-slongdotexe build
 
       - name: Create deployment ZIP
-        working-directory: infra/cdn-cloudfront
+        working-directory: applications/nextjs-slongdotexe/infra/templates/cdn-cloudfront
         run: zip --recurse-paths --symlinks "$RUNNER_TEMP/cdn.zip" template.yaml samconfig.toml out
 
       - name: Upload CDN artifact

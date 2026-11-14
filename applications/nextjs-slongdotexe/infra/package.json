@@ -1,11 +1,12 @@
 {
-  "name": "@slongdotexe/infra-cdn-cloudfront",
+  "name": "@slongdotexe/infra-nextjs-slongdotexe",
   "version": "0.0.2",
+  "private": true,
   "type": "module",
   "scripts": {
     "typecheck": "tsc --project tsconfig.json",
-    "build": "node scripts/build-cloudfront-handler.mts && node scripts/build-preview-handler.mts",
-    "test": "node --test src/handlers/*.test.mjs scripts/*.test.mjs"
+    "build": "node templates/cdn-cloudfront/scripts/build-cloudfront-handler.mts && node templates/cdn-cloudfront/scripts/build-preview-handler.mts",
+    "test": "node --test templates/cdn-cloudfront/scripts/*.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront-keyvaluestore": "^3.1156.0",
@@ -14,7 +15,7 @@
     "yaml": "^2.8.1"
   },
   "devDependencies": {
-    "@slongdotexe/application-infrastructure": "workspace:*",
+    "@slongdotexe/application-runtime": "workspace:*",
     "@types/aws-lambda": "^8.10.159",
     "@types/node": "^24.0.0",
     "esbuild": "^0.27.0",

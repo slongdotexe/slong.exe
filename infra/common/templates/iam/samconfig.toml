@@ -1,7 +1,7 @@
 version = 0.1
 
 [default.deploy.parameters]
-template_file = "template.yaml"
+template_file = "template-deployment-access.yaml"
 resolve_s3 = false
 s3_bucket = "slongdotexe-templates-206665440523-ap-southeast-2"
 s3_prefix = "bootstrap/shared"
@@ -22,7 +22,7 @@ parameter_overrides = [
 ]
 
 [ci-shared.deploy.parameters]
-template_file = "template.yaml"
+template_file = "template-deployment-access.yaml"
 resolve_s3 = false
 s3_bucket = "slongdotexe-templates-206665440523-ap-southeast-2"
 s3_prefix = "bootstrap/shared"

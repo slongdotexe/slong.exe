@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { hash } from "@slongdotexe/application-infrastructure/cache";
+import { hash } from "@slongdotexe/application-runtime/cache";
 export {
   dynamo,
   hash,
   invalidated,
   invalidateTags,
   UpdateItemCommand,
-} from "@slongdotexe/application-infrastructure/cache";
+} from "@slongdotexe/application-runtime/cache";
 import {
   S3Client,
   GetObjectCommand,
@@ -44,4 +44,3 @@ export function configuration(
 export function objectKey(config: CacheConfiguration, key: string) {
   return `${config.namespace}/${hash(key)}.cache`;
 }
-

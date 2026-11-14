@@ -41,7 +41,6 @@ jobs:
       - name: Unpack deployment ZIP
         run: unzip -q "$RUNNER_TEMP/preview-cache.zip" -d "$RUNNER_TEMP/preview-cache"
 
-      - uses: aws-actions/setup-sam@v2
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_INFRA_DEPLOY_ROLE_ARN }}

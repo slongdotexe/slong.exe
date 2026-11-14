@@ -48,7 +48,6 @@ jobs:
 
       - name: Unpack deployment ZIP
         run: unzip -q "$RUNNER_TEMP/cdn.zip" -d "$RUNNER_TEMP/cdn"
-      - uses: aws-actions/setup-sam@v2
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_INFRA_DEPLOY_ROLE_ARN }}

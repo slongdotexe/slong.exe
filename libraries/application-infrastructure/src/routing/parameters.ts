@@ -39,8 +39,12 @@ export async function publishParameters(
   const ownerName = prefix + "/owner";
   const values = {
     "distribution-id": properties.DistributionId,
-    "routing-store-arn": properties.StoreArn,
-    "preview-domain": properties.DomainName,
+    ...(properties.StoreArn !== undefined
+      ? {
+          "routing-store-arn": properties.StoreArn,
+          "preview-domain": properties.DomainName,
+        }
+      : {}),
   };
   if (
     event.RequestType === "Update" &&

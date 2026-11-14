@@ -1,0 +1,124 @@
+name: Deploy Preview Environment
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: PR number used to name the preview
+        type: number
+        required: true
+      build_run_id:
+        description: Run containing the application ZIP (deploy only)
+        type: string
+        required: false
+      operation:
+        description: Preview operation
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-preview-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: inputs.operation == 'deploy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment:
+      name: preview
+      url: ${{ steps.preview-url.outputs.url }}
+
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      APP_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      PREVIEW_NAME: pr-${{ inputs.pr_number }}
+      EXECUTION_ROLE: ${{ vars.AWS_CLOUDFORMATION_ROLE_ARN }}
+      ARTIFACT_BUCKET: ${{ vars.AWS_ARTIFACT_BUCKET }}
+      ARTIFACT_PREFIX: ${{ vars.AWS_ARTIFACT_PREFIX }}
+      RUNTIME_BOUNDARY: ${{ vars.AWS_RUNTIME_PERMISSIONS_BOUNDARY_ARN }}
+      AWS_PAGER: ""
+
+    steps:
+      - name: Download application artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: application
+          path: ${{ runner.temp }}
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Unpack deployment ZIP
+        run: unzip -q "$RUNNER_TEMP/application.zip" -d "$RUNNER_TEMP/application"
+
+      - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.APP_REGION }}
+
+      - name: Deploy preview and register route
+        working-directory: ${{ runner.temp }}/application
+        run: |
+          sam deploy \
+            --config-env preview \
+            --stack-name "sam-nextjs-slongdotexe-$PREVIEW_NAME" \
+            --region "$APP_REGION" \
+            --role-arn "$EXECUTION_ROLE" \
+            --s3-bucket "$ARTIFACT_BUCKET" \
+            --s3-prefix "$ARTIFACT_PREFIX" \
+            --parameter-overrides \
+              "RuntimePermissionsBoundaryArn=$RUNTIME_BOUNDARY" \
+              Environment=ephemeral \
+              LogLevel=DEBUG \
+              EndpointAuthType=IamAuth \
+              SharedCacheStackName=sam-nextjs-slongdotexe-preview-cache \
+              EnableCloudFrontAuthorization=true \
+              PreviewParameterPrefix=/slongdotexe/ephemeral/cdn \
+              "PreviewName=$PREVIEW_NAME"
+
+      - name: Publish preview URL
+        id: preview-url
+        run: |
+          preview_url=$(
+            aws cloudformation describe-stacks \
+              --stack-name "sam-nextjs-slongdotexe-$PREVIEW_NAME" \
+              --region "$APP_REGION" \
+              --query "Stacks[0].Outputs[?OutputKey=='PreviewUrl'].OutputValue | [0]" \
+              --output text
+          )
+          echo "url=$preview_url" >> "$GITHUB_OUTPUT"
+          echo "Preview: $preview_url" >> "$GITHUB_STEP_SUMMARY"
+
+  delete:
+    if: inputs.operation == 'delete'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: preview
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PREVIEW_NAME: pr-${{ inputs.pr_number }}
+      EXECUTION_ROLE: ${{ vars.AWS_CLOUDFORMATION_ROLE_ARN }}
+      AWS_PAGER: ""
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      - name: Delete preview and unregister route
+        run: >-
+          aws cloudformation delete-stack
+          --stack-name "sam-nextjs-slongdotexe-$PREVIEW_NAME"
+          --role-arn "$EXECUTION_ROLE"
+      - name: Wait for preview deletion
+        run: >-
+          aws cloudformation wait stack-delete-complete
+          --stack-name "sam-nextjs-slongdotexe-$PREVIEW_NAME"

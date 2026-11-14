@@ -1,7 +1,20 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: CloudFront CDN and WAF for the NextJS Lambda Web Function; deploy in us-east-1.
 
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks: [W6001]
+
 Parameters:
+  ProjectPrefix:
+    Type: String
+    Default: sam-nextjs-slongdotexe
+    AllowedPattern: '[a-z][a-z0-9-]{0,24}[a-z0-9]'
+  InfrastructureRuntimePermissionsBoundaryArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '(^$|arn:[a-z-]+:iam::[0-9]{12}:policy/.+)'
   Environment:
     Type: String
     Default: development
@@ -30,13 +43,14 @@ Parameters:
     Type: String
     Default: ap-southeast-2
     AllowedPattern: '[a-z]{2}(-[a-z]+)+-[0-9]+'
-    Description: Region receiving the preview SSM parameters; must contain the shared application stack.
+    Description: Application region receiving the CDN SSM parameters.
   PreviewParameterPrefix:
     Type: String
     Default: /slongdotexe/ephemeral/cdn
     AllowedPattern: '/[a-zA-Z0-9_./-]+[a-zA-Z0-9_-]'
 
 Conditions:
+  HasInfrastructureBoundary: !Not [!Equals [!Ref InfrastructureRuntimePermissionsBoundaryArn, '']]
   UseRoute53: !Equals [!Ref CreateHostedZone, 'true']
   EnablePreviewRouting: !Equals [!Ref Environment, ephemeral]
   IsMainline: !Not [!Equals [!Ref Environment, ephemeral]]
@@ -59,15 +73,19 @@ Resources:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
-    Condition: EnablePreviewRouting
     Properties:
       LogGroupName: !Sub /aws/lambda/${AWS::StackName}-routing-configuration
       RetentionInDays: 30
 
   RoutingConfigurationRole:
     Type: AWS::IAM::Role
-    Condition: EnablePreviewRouting
     Properties:
+      PermissionsBoundary: !If [HasInfrastructureBoundary, !Ref InfrastructureRuntimePermissionsBoundaryArn, !Ref 'AWS::NoValue']
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectPrefix
+        - Key: DeploymentEnvironment
+          Value: !Ref Environment
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -80,27 +98,36 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
-                Action:
-                  - cloudfront-keyvaluestore:DescribeKeyValueStore
-                  - cloudfront-keyvaluestore:GetKey
-                  - cloudfront-keyvaluestore:PutKey
-                  - cloudfront-keyvaluestore:DeleteKey
-                Resource: !GetAtt PreviewRoutingStore.Arn
+              - !If
+                - EnablePreviewRouting
+                - Effect: Allow
+                  Action:
+                    - cloudfront-keyvaluestore:DescribeKeyValueStore
+                    - cloudfront-keyvaluestore:GetKey
+                    - cloudfront-keyvaluestore:PutKey
+                    - cloudfront-keyvaluestore:DeleteKey
+                  Resource: !GetAtt PreviewRoutingStore.Arn
+                - !Ref AWS::NoValue
               - Effect: Allow
                 Action: [ssm:GetParameter, ssm:PutParameter, ssm:DeleteParameter]
-                Resource:
-                  - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/owner'
-                  - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/distribution-id'
-                  - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/routing-store-arn'
-                  - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/preview-domain'
+                Resource: !If
+                  - EnablePreviewRouting
+                  - - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/owner'
+                    - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/distribution-id'
+                    - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/routing-store-arn'
+                    - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter${PreviewParameterPrefix}/preview-domain'
+                  - - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter/slongdotexe/${Environment}/cdn/owner'
+                    - !Sub 'arn:${AWS::Partition}:ssm:${AppRegion}:${AWS::AccountId}:parameter/slongdotexe/${Environment}/cdn/distribution-id'
               - Effect: Allow
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
                 Resource: !GetAtt RoutingConfigurationLogGroup.Arn
 
   RoutingConfigurationFunction:
     Type: AWS::Lambda::Function
-    Condition: EnablePreviewRouting
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks: [W3002]
     Properties:
       FunctionName: !Sub ${AWS::StackName}-routing-configuration
       Runtime: nodejs24.x
@@ -111,6 +138,16 @@ Resources:
       Code: out/preview-routing-resource/
       LoggingConfig:
         LogGroup: !Ref RoutingConfigurationLogGroup
+
+  DistributionParameters:
+    Type: Custom::DistributionParameters
+    Condition: IsMainline
+    Properties:
+      ServiceToken: !GetAtt RoutingConfigurationFunction.Arn
+      ServiceTimeout: 180
+      TargetRegion: !Ref AppRegion
+      ParameterPrefix: !Sub /slongdotexe/${Environment}/cdn
+      DistributionId: !Ref Distribution
 
   RoutingConfiguration:
     Type: Custom::RoutingConfiguration
@@ -228,6 +265,11 @@ Resources:
   WebAcl:
     Type: AWS::WAFv2::WebACL
     Properties:
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectPrefix
+        - Key: DeploymentEnvironment
+          Value: !Ref Environment
       Scope: CLOUDFRONT
       DefaultAction:
         Allow: {}
@@ -319,6 +361,11 @@ Resources:
   Distribution:
     Type: AWS::CloudFront::Distribution
     Properties:
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectPrefix
+        - Key: DeploymentEnvironment
+          Value: !Ref Environment
       DistributionConfig:
         Enabled: true
         Aliases: !If

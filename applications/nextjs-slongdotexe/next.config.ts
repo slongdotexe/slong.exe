@@ -19,7 +19,6 @@ const nextConfig: NextConfig = {
     "/*": [
       "./src/cache/*.ts",
       "./src/cache/*.mts",
-      "./src/cache/worker.mjs",
       "./web-function-entrypoint.mts",
     ],
   },

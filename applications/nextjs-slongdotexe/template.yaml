@@ -23,6 +23,11 @@ Parameters:
   LogLevel:
     Type: String
     Default: INFO
+  RuntimePermissionsBoundaryArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '(^$|arn:[a-z-]+:iam::[0-9]{12}:policy/.+)'
+    Description: Bootstrap RuntimePermissionsBoundaryArn output; required when using its scoped execution role.
   ApplicationPath:
     Type: String
     Default: applications/nextjs-slongdotexe
@@ -36,11 +41,11 @@ Parameters:
     Default: IamAuth
     AllowedValues: [IamAuth, ApplicationManaged]
     Description: Use IamAuth for CloudFront, including bootstrap before its distribution ID is available.
-  CloudFrontDistributionId:
+  EnableCloudFrontAuthorization:
     Type: String
-    Default: ''
-    AllowedPattern: '(^$|E[A-Z0-9]+)'
-    Description: Leave empty during bootstrap; provide the deployed CDN ID to authorize access.
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Set false only for initial application bootstrap before the CDN publishes its SSM parameter.
   RumDomainName:
     Type: String
     Default: ''
@@ -55,7 +60,8 @@ Conditions:
   IsProduction: !Equals [!Ref Environment, production]
   IsPreview: !Not [!Equals [!Ref PreviewName, '']]
   OwnsCache: !Equals [!Ref PreviewName, '']
-  HasDistributionId: !Or [!Condition IsPreview, !Not [!Equals [!Ref CloudFrontDistributionId, '']]]
+  AuthorizeCloudFront: !Equals [!Ref EnableCloudFrontAuthorization, 'true']
+  HasRuntimePermissionsBoundary: !Not [!Equals [!Ref RuntimePermissionsBoundaryArn, '']]
   EnableRum: !And [!Condition OwnsCache, !Not [!Equals [!Ref RumDomainName, '']]]
 
 Rules:
@@ -66,6 +72,8 @@ Rules:
         AssertDescription: PR previews must use Environment=ephemeral.
       - Assert: !Equals [!Ref EndpointAuthType, IamAuth]
         AssertDescription: PR preview endpoints must use IAM authentication.
+      - Assert: !Equals [!Ref EnableCloudFrontAuthorization, 'true']
+        AssertDescription: PR previews require CloudFront authorization and the deployed preview CDN parameters.
 
 Resources:
   RumIdentityPool:
@@ -78,6 +86,7 @@ Resources:
     Type: AWS::IAM::Role
     Condition: EnableRum
     Properties:
+      PermissionsBoundary: !If [HasRuntimePermissionsBoundary, !Ref RuntimePermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -136,6 +145,7 @@ Resources:
   WebAppRole:
     Type: AWS::IAM::Role
     Properties:
+      PermissionsBoundary: !If [HasRuntimePermissionsBoundary, !Ref RuntimePermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -184,7 +194,7 @@ Resources:
                             Fn::ImportValue: !Sub ${SharedCacheStackName}-PreviewPrefix
                       - !Sub '${AWS::StackName}/*'
               - Effect: Allow
-                Action: dynamodb:GetItem
+                Action: [dynamodb:GetItem, dynamodb:UpdateItem]
                 Resource: !If
                   - IsPreview
                   - Fn::ImportValue: !Sub ${SharedCacheStackName}-TagTableArn
@@ -199,12 +209,6 @@ Resources:
                           - Prefix:
                               Fn::ImportValue: !Sub ${SharedCacheStackName}-PreviewPrefix
                         - !Sub '${AWS::StackName}#tag#*'
-              - Effect: Allow
-                Action: sqs:SendMessage
-                Resource: !If
-                  - IsPreview
-                  - Fn::ImportValue: !Sub ${SharedCacheStackName}-QueueArn
-                  - !GetAtt CacheStack.Outputs.QueueArn
               - Effect: Allow
                 Action: xray:PutTraceSegments
                 Resource: '*'
@@ -268,10 +272,6 @@ Resources:
             - Prefix:
                 Fn::ImportValue: !Sub ${SharedCacheStackName}-PreviewPrefix
           - !Ref AWS::StackName
-        CACHE_REVALIDATION_QUEUE_URL: !If
-          - IsPreview
-          - Fn::ImportValue: !Sub ${SharedCacheStackName}-QueueUrl
-          - !GetAtt CacheStack.Outputs.QueueUrl
         ENVIRONMENT: !Ref Environment
         LOG_LEVEL: !Ref LogLevel
         RUM_APP_MONITOR_ID: !If [EnableRum, !GetAtt RumAppMonitor.Id, !Ref 'AWS::NoValue']
@@ -283,7 +283,7 @@ Resources:
 
   WebAppCloudFrontPolicy:
     Type: AWS::Lambda::ResourcePolicy
-    Condition: HasDistributionId
+    Condition: AuthorizeCloudFront
     Properties:
       ResourceArn: !Ref WebAppFunction
       PolicyDocument:
@@ -302,7 +302,7 @@ Resources:
                 aws:SourceArn: !If
                   - IsPreview
                   - !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/{{resolve:ssm:${PreviewParameterPrefix}/distribution-id}}'
-                  - !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}
+                  - !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/{{resolve:ssm:/slongdotexe/${Environment}/cdn/distribution-id}}'
 
   PreviewRoutingLogGroup:
     Type: AWS::Logs::LogGroup
@@ -317,6 +317,7 @@ Resources:
     Type: AWS::IAM::Role
     Condition: IsPreview
     Properties:
+      PermissionsBoundary: !If [HasRuntimePermissionsBoundary, !Ref RuntimePermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -394,12 +395,6 @@ Outputs:
   CacheTagTableName:
     Condition: OwnsCache
     Value: !GetAtt CacheStack.Outputs.TagTableName
-  CacheRevalidationQueueUrl:
-    Condition: OwnsCache
-    Value: !GetAtt CacheStack.Outputs.QueueUrl
-  CacheRevalidationDeadLetterQueueUrl:
-    Condition: OwnsCache
-    Value: !GetAtt CacheStack.Outputs.DeadLetterQueueUrl
   WebAppUrl:
     Value: !Sub https://${WebAppFunctionEndpoint.DomainName}
   WebAppLogGroupName:

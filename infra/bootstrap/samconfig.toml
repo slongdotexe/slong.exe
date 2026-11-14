@@ -1,0 +1,38 @@
+version = 0.1
+
+[default.deploy.parameters]
+template_file = "template-shared.yaml"
+stack_name = "sam-nextjs-slongdotexe-bootstrap"
+region = "ap-southeast-2"
+profile = "slongdotexe"
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+no_fail_on_empty_changeset = true
+confirm_changeset = false
+parameter_overrides = [
+    "GitHubOwner=slongdotexe",
+    "GitHubRepository=slong.exe",
+    "ProjectPrefix=sam-nextjs-slongdotexe",
+    "ExistingGitHubOidcProviderArn=''",
+]
+
+[ci-shared.deploy.parameters]
+template_file = "template-shared.yaml"
+stack_name = "sam-nextjs-slongdotexe-bootstrap"
+region = "ap-southeast-2"
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+no_fail_on_empty_changeset = true
+confirm_changeset = false
+parameter_overrides = [
+    "GitHubOwner=slongdotexe",
+    "GitHubRepository=slong.exe",
+    "ProjectPrefix=sam-nextjs-slongdotexe",
+    "ExistingGitHubOidcProviderArn=''",
+]
+
+[ci-edge.deploy.parameters]
+template_file = "template-edge.yaml"
+stack_name = "sam-nextjs-slongdotexe-bootstrap-edge"
+region = "us-east-1"
+no_fail_on_empty_changeset = true
+confirm_changeset = false
+parameter_overrides = ["ProjectPrefix=sam-nextjs-slongdotexe"]

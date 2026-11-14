@@ -27,27 +27,76 @@ warm_containers = "EAGER"
 warm_containers = "EAGER"
 
 [development.deploy.parameters]
+template_file = "template.yaml"
 stack_name = "sam-nextjs-slongdotexe-development"
-profile = "slongdotexe"
 region = "ap-southeast-2"
-resolve_s3 = true
+resolve_s3 = false
 no_fail_on_empty_changeset = true
 confirm_changeset = false
-parameter_overrides = "Environment=development LogLevel=INFO EndpointAuthType=IamAuth RumDomainName=development.seanlong.me RumSessionSampleRate=1"
+parameter_overrides = [
+	"Environment=development",
+	"RuntimePermissionsBoundaryArn=arn:aws:iam::206665440523:policy/sam-nextjs-slongdotexe-development-runtime-boundary",
+	"LogLevel=INFO",
+	"EndpointAuthType=IamAuth",
+	"RumDomainName=development.seanlong.me",
+	"RumSessionSampleRate=1",
+	"EnableCloudFrontAuthorization=true",
+]
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+
+[development-bootstrap.deploy.parameters]
+template_file = "template.yaml"
+stack_name = "sam-nextjs-slongdotexe-development"
+region = "ap-southeast-2"
+resolve_s3 = false
+no_fail_on_empty_changeset = true
+confirm_changeset = false
+parameter_overrides = [
+	"Environment=development",
+	"RuntimePermissionsBoundaryArn=arn:aws:iam::206665440523:policy/sam-nextjs-slongdotexe-development-runtime-boundary",
+	"LogLevel=INFO",
+	"EndpointAuthType=IamAuth",
+	"RumDomainName=development.seanlong.me",
+	"RumSessionSampleRate=1",
+	"EnableCloudFrontAuthorization=false",
+]
 capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
 
 [production.deploy.parameters]
+template_file = "template.yaml"
 stack_name = "sam-nextjs-slongdotexe-production"
-profile = "slongdotexe"
 region = "ap-southeast-2"
-resolve_s3 = true
+resolve_s3 = false
 no_fail_on_empty_changeset = true
 confirm_changeset = false
-parameter_overrides = "Environment=production LogLevel=INFO EndpointAuthType=IamAuth"
+parameter_overrides = [
+	"Environment=production",
+	"RuntimePermissionsBoundaryArn=arn:aws:iam::206665440523:policy/sam-nextjs-slongdotexe-production-runtime-boundary",
+	"LogLevel=INFO",
+	"EndpointAuthType=IamAuth",
+	"EnableCloudFrontAuthorization=true",
+]
+capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+
+[production-bootstrap.deploy.parameters]
+template_file = "template.yaml"
+stack_name = "sam-nextjs-slongdotexe-production"
+region = "ap-southeast-2"
+resolve_s3 = false
+no_fail_on_empty_changeset = true
+confirm_changeset = false
+parameter_overrides = [
+	"Environment=production",
+	"RuntimePermissionsBoundaryArn=arn:aws:iam::206665440523:policy/sam-nextjs-slongdotexe-production-runtime-boundary",
+	"LogLevel=INFO",
+	"EndpointAuthType=IamAuth",
+	"EnableCloudFrontAuthorization=false",
+]
 capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
 
 [preview.deploy.parameters]
-resolve_s3 = true
+template_file = "template.yaml"
+resolve_s3 = false
 no_fail_on_empty_changeset = true
 confirm_changeset = false
 capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"

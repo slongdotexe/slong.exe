@@ -1,0 +1,48 @@
+name: Build Preview Cache
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable Yarn
+        run: corepack enable
+
+      - name: Cache Yarn dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.yarn/berry/cache
+          key: ${{ runner.os }}-yarn-${{ hashFiles('yarn.lock', '.yarnrc.yml', 'package.json') }}
+          restore-keys: ${{ runner.os }}-yarn-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build preview cache infrastructure
+        run: yarn workspace @slongdotexe/application-infrastructure build
+
+      - name: Create deployment ZIP
+        working-directory: libraries/application-infrastructure/out/cache
+        run: zip --recurse-paths --symlinks "$RUNNER_TEMP/preview-cache.zip" .
+
+      - name: Upload preview cache artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-cache
+          path: ${{ runner.temp }}/preview-cache.zip
+          if-no-files-found: error
+          retention-days: 30

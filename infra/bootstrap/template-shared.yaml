@@ -1,0 +1,1235 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Shared artifact storage and GitHub OIDC with isolated development and production deployment roles.
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    AllowedPattern: '[A-Za-z0-9-]+'
+  GitHubRepository:
+    Type: String
+    AllowedPattern: '[A-Za-z0-9_.-]+'
+  ProjectPrefix:
+    Type: String
+    Default: sam-nextjs-slongdotexe
+    AllowedPattern: '[a-z][a-z0-9-]{0,24}[a-z0-9]'
+  ExistingGitHubOidcProviderArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|arn:[a-z-]+:iam::[0-9]{12}:oidc-provider/token.actions.githubusercontent.com'
+
+Conditions:
+  CreateGitHubOidcProvider: !Equals [ !Ref ExistingGitHubOidcProviderArn, '' ]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateGitHubOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [ sts.amazonaws.com ]
+
+  Artifacts:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: CleanOldArtifactVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 90
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+  ArtifactsPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Artifacts
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [ !GetAtt Artifacts.Arn, !Sub '${Artifacts.Arn}/*' ]
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+  developmentRuntimePermissionsBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectPrefix}-development-runtime-boundary'
+      Description: Maximum application runtime permissions within this project and environment.
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: [ s3:GetObject, s3:PutObject ]
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-development-*/${ProjectPrefix}-development/*'
+              - !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-development-*/${ProjectPrefix}-development-*/*'
+          - Effect: Allow
+            Action: s3:ListBucket
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-development-*'
+            Condition:
+              StringLike:
+                s3:prefix:
+                  - !Sub '${ProjectPrefix}-development/*'
+                  - !Sub '${ProjectPrefix}-development-*/*'
+          - Effect: Allow
+            Action: [ dynamodb:GetItem, dynamodb:UpdateItem ]
+            Resource: !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectPrefix}-development-*'
+            Condition:
+              ForAllValues:StringLike:
+                dynamodb:LeadingKeys:
+                  - !Sub '${ProjectPrefix}-development#tag#*'
+                  - !Sub '${ProjectPrefix}-development-*#tag#*'
+          - Effect: Allow
+            Action: [ logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents ]
+            Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectPrefix}-development-*:*'
+          - Effect: Allow
+            Action: rum:PutRumEvents
+            Resource: !Sub 'arn:${AWS::Partition}:rum:${AWS::Region}:${AWS::AccountId}:appmonitor/${ProjectPrefix}-development-*'
+          - Effect: Allow
+            Action: xray:PutTraceSegments
+            Resource: '*'
+
+  developmentApplicationDeploymentPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectPrefix}-development-app-deployment-policy'
+      Description: CloudFormation application lifecycle permissions within this project and environment.
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: NestedCacheStack
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:GetTemplate
+            Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-development-*/*'
+          - Sid: CacheBucketLifecycle
+            Effect: Allow
+            Action:
+              - s3:CreateBucket
+              - s3:DeleteBucket
+              - s3:GetBucketLocation
+              - s3:GetBucketPolicy
+              - s3:PutBucketPolicy
+              - s3:DeleteBucketPolicy
+              - s3:GetEncryptionConfiguration
+              - s3:PutEncryptionConfiguration
+              - s3:GetBucketPublicAccessBlock
+              - s3:PutBucketPublicAccessBlock
+              - s3:GetBucketTagging
+              - s3:PutBucketTagging
+              - s3:GetBucketVersioning
+              - s3:GetBucketAcl
+              - s3:GetBucketOwnershipControls
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-development-*'
+          - Sid: CacheTableLifecycle
+            Effect: Allow
+            Action:
+              - dynamodb:CreateTable
+              - dynamodb:UpdateTable
+              - dynamodb:DeleteTable
+              - dynamodb:DescribeTable
+              - dynamodb:DescribeContinuousBackups
+              - dynamodb:UpdateContinuousBackups
+              - dynamodb:ListTagsOfResource
+              - dynamodb:TagResource
+              - dynamodb:UntagResource
+            Resource: !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectPrefix}-development-*'
+          - Sid: CreateBoundedRuntimeRoles
+            Effect: Allow
+            Action: [ iam:CreateRole, iam:PutRolePermissionsBoundary ]
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-development-*WebAppRole-*'
+              - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-development-*RumGuestRole-*'
+            Condition:
+              ArnEquals:
+                iam:PermissionsBoundary: !Ref developmentRuntimePermissionsBoundary
+          - Sid: RuntimeRoleLifecycle
+            Effect: Allow
+            Action:
+              - iam:GetRole
+              - iam:DeleteRole
+              - iam:UpdateAssumeRolePolicy
+              - iam:GetRolePolicy
+              - iam:PutRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:ListRolePolicies
+              - iam:ListAttachedRolePolicies
+              - iam:TagRole
+              - iam:UntagRole
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-development-*WebAppRole-*'
+              - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-development-*RumGuestRole-*'
+          - Sid: PassWebRuntimeRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-development-*WebAppRole-*'
+            Condition:
+              StringEquals:
+                iam:PassedToService: lambda.amazonaws.com
+          - Sid: WebFunctionLifecycle
+            Effect: Allow
+            Action:
+              - lambda:CreateWebFunction
+              - lambda:GetWebFunction
+              - lambda:DeleteWebFunction
+              - lambda:CreateWebFunctionRevision
+              - lambda:GetWebFunctionRevision
+              - lambda:DeleteWebFunctionRevision
+              - lambda:CreateWebFunctionEndpoint
+              - lambda:GetWebFunctionEndpoint
+              - lambda:UpdateWebFunctionEndpoint
+              - lambda:DeleteWebFunctionEndpoint
+              - lambda:GetResourcePolicy
+              - lambda:PutResourcePolicy
+              - lambda:DeleteResourcePolicy
+              - lambda:ListTags
+              - lambda:TagResource
+              - lambda:UntagResource
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:web-function/${ProjectPrefix}-development-*'
+          - Sid: ApplicationLogGroups
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:PutRetentionPolicy
+              - logs:DeleteRetentionPolicy
+              - logs:TagResource
+              - logs:UntagResource
+              - logs:ListTagsForResource
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectPrefix}-development-*'
+              - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectPrefix}-development-*:*'
+          - Sid: LogGroupDiscovery
+            Effect: Allow
+            Action: logs:DescribeLogGroups
+            Resource: '*'
+          - Sid: CdnParameterResolution
+            Effect: Allow
+            Action: [ ssm:GetParameter, ssm:GetParameters ]
+            Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slongdotexe/development/cdn/distribution-id'
+          - Sid: RumMonitorLifecycle
+            Effect: Allow
+            Action:
+              - rum:CreateAppMonitor
+              - rum:GetAppMonitor
+              - rum:UpdateAppMonitor
+              - rum:DeleteAppMonitor
+              - rum:ListTagsForResource
+              - rum:TagResource
+              - rum:UntagResource
+            Resource: !Sub 'arn:${AWS::Partition}:rum:${AWS::Region}:${AWS::AccountId}:appmonitor/${ProjectPrefix}-development-*'
+          - Sid: CognitoIdentityPoolLifecycle
+            Effect: Allow
+            Action:
+              - cognito-identity:CreateIdentityPool
+              - cognito-identity:DescribeIdentityPool
+              - cognito-identity:UpdateIdentityPool
+              - cognito-identity:DeleteIdentityPool
+              - cognito-identity:GetIdentityPoolRoles
+              - cognito-identity:SetIdentityPoolRoles
+              - cognito-identity:ListTagsForResource
+              - cognito-identity:TagResource
+              - cognito-identity:UntagResource
+            Resource: !Sub 'arn:${AWS::Partition}:cognito-identity:${AWS::Region}:${AWS::AccountId}:identitypool/*'
+
+  developmentCloudFormationExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-development-app-execution'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref developmentApplicationDeploymentPolicy
+      Policies:
+        - PolicyName: ReadApplicationArtifacts
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${ProjectPrefix}/development/*'
+
+  developmentPipelineExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-development-app-deploy'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateGitHubOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Ref ExistingGitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:development'
+      Policies:
+        - PolicyName: DeployApplication
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: CreateApplicationChangeSet
+                Effect: Allow
+                Action: cloudformation:CreateChangeSet
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-development/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-development-*/*'
+                Condition:
+                  ArnEquals:
+                    cloudformation:RoleArn: !GetAtt developmentCloudFormationExecutionRole.Arn
+              - Sid: ApplicationStack
+                Effect: Allow
+                Action:
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:GetTemplate
+                  - cloudformation:GetTemplateSummary
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-development/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-development-*/*'
+              - Sid: PassOnlyCloudFormationRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt developmentCloudFormationExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: cloudformation.amazonaws.com
+              - Sid: ArtifactBucketMetadata
+                Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                  - s3:GetBucketVersioning
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}'
+              - Sid: ListApplicationArtifacts
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}'
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - !Sub '${ProjectPrefix}/development'
+                      - !Sub '${ProjectPrefix}/development/*'
+              - Sid: ApplicationArtifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:AbortMultipartUpload
+                  - s3:ListMultipartUploadParts
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${ProjectPrefix}/development/*'
+  productionRuntimePermissionsBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectPrefix}-production-runtime-boundary'
+      Description: Maximum application runtime permissions within this project and environment.
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: [ s3:GetObject, s3:PutObject ]
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-production-*/${ProjectPrefix}-production/*'
+              - !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-production-*/${ProjectPrefix}-production-*/*'
+          - Effect: Allow
+            Action: s3:ListBucket
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-production-*'
+            Condition:
+              StringLike:
+                s3:prefix:
+                  - !Sub '${ProjectPrefix}-production/*'
+                  - !Sub '${ProjectPrefix}-production-*/*'
+          - Effect: Allow
+            Action: [ dynamodb:GetItem, dynamodb:UpdateItem ]
+            Resource: !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectPrefix}-production-*'
+            Condition:
+              ForAllValues:StringLike:
+                dynamodb:LeadingKeys:
+                  - !Sub '${ProjectPrefix}-production#tag#*'
+                  - !Sub '${ProjectPrefix}-production-*#tag#*'
+          - Effect: Allow
+            Action: [ logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents ]
+            Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectPrefix}-production-*:*'
+          - Effect: Allow
+            Action: rum:PutRumEvents
+            Resource: !Sub 'arn:${AWS::Partition}:rum:${AWS::Region}:${AWS::AccountId}:appmonitor/${ProjectPrefix}-production-*'
+          - Effect: Allow
+            Action: xray:PutTraceSegments
+            Resource: '*'
+
+  productionApplicationDeploymentPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectPrefix}-production-app-deployment-policy'
+      Description: CloudFormation application lifecycle permissions within this project and environment.
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: NestedCacheStack
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:GetTemplate
+            Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-production-*/*'
+          - Sid: CacheBucketLifecycle
+            Effect: Allow
+            Action:
+              - s3:CreateBucket
+              - s3:DeleteBucket
+              - s3:GetBucketLocation
+              - s3:GetBucketPolicy
+              - s3:PutBucketPolicy
+              - s3:DeleteBucketPolicy
+              - s3:GetEncryptionConfiguration
+              - s3:PutEncryptionConfiguration
+              - s3:GetBucketPublicAccessBlock
+              - s3:PutBucketPublicAccessBlock
+              - s3:GetBucketTagging
+              - s3:PutBucketTagging
+              - s3:GetBucketVersioning
+              - s3:GetBucketAcl
+              - s3:GetBucketOwnershipControls
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-production-*'
+          - Sid: CacheTableLifecycle
+            Effect: Allow
+            Action:
+              - dynamodb:CreateTable
+              - dynamodb:UpdateTable
+              - dynamodb:DeleteTable
+              - dynamodb:DescribeTable
+              - dynamodb:DescribeContinuousBackups
+              - dynamodb:UpdateContinuousBackups
+              - dynamodb:ListTagsOfResource
+              - dynamodb:TagResource
+              - dynamodb:UntagResource
+            Resource: !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectPrefix}-production-*'
+          - Sid: CreateBoundedRuntimeRoles
+            Effect: Allow
+            Action: [ iam:CreateRole, iam:PutRolePermissionsBoundary ]
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-production-*WebAppRole-*'
+              - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-production-*RumGuestRole-*'
+            Condition:
+              ArnEquals:
+                iam:PermissionsBoundary: !Ref productionRuntimePermissionsBoundary
+          - Sid: RuntimeRoleLifecycle
+            Effect: Allow
+            Action:
+              - iam:GetRole
+              - iam:DeleteRole
+              - iam:UpdateAssumeRolePolicy
+              - iam:GetRolePolicy
+              - iam:PutRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:ListRolePolicies
+              - iam:ListAttachedRolePolicies
+              - iam:TagRole
+              - iam:UntagRole
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-production-*WebAppRole-*'
+              - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-production-*RumGuestRole-*'
+          - Sid: PassWebRuntimeRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-production-*WebAppRole-*'
+            Condition:
+              StringEquals:
+                iam:PassedToService: lambda.amazonaws.com
+          - Sid: WebFunctionLifecycle
+            Effect: Allow
+            Action:
+              - lambda:CreateWebFunction
+              - lambda:GetWebFunction
+              - lambda:DeleteWebFunction
+              - lambda:CreateWebFunctionRevision
+              - lambda:GetWebFunctionRevision
+              - lambda:DeleteWebFunctionRevision
+              - lambda:CreateWebFunctionEndpoint
+              - lambda:GetWebFunctionEndpoint
+              - lambda:UpdateWebFunctionEndpoint
+              - lambda:DeleteWebFunctionEndpoint
+              - lambda:GetResourcePolicy
+              - lambda:PutResourcePolicy
+              - lambda:DeleteResourcePolicy
+              - lambda:ListTags
+              - lambda:TagResource
+              - lambda:UntagResource
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:web-function/${ProjectPrefix}-production-*'
+          - Sid: ApplicationLogGroups
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:PutRetentionPolicy
+              - logs:DeleteRetentionPolicy
+              - logs:TagResource
+              - logs:UntagResource
+              - logs:ListTagsForResource
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectPrefix}-production-*'
+              - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectPrefix}-production-*:*'
+          - Sid: LogGroupDiscovery
+            Effect: Allow
+            Action: logs:DescribeLogGroups
+            Resource: '*'
+          - Sid: CdnParameterResolution
+            Effect: Allow
+            Action: [ ssm:GetParameter, ssm:GetParameters ]
+            Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slongdotexe/production/cdn/distribution-id'
+          - Sid: RumMonitorLifecycle
+            Effect: Allow
+            Action:
+              - rum:CreateAppMonitor
+              - rum:GetAppMonitor
+              - rum:UpdateAppMonitor
+              - rum:DeleteAppMonitor
+              - rum:ListTagsForResource
+              - rum:TagResource
+              - rum:UntagResource
+            Resource: !Sub 'arn:${AWS::Partition}:rum:${AWS::Region}:${AWS::AccountId}:appmonitor/${ProjectPrefix}-production-*'
+          - Sid: CognitoIdentityPoolLifecycle
+            Effect: Allow
+            Action:
+              - cognito-identity:CreateIdentityPool
+              - cognito-identity:DescribeIdentityPool
+              - cognito-identity:UpdateIdentityPool
+              - cognito-identity:DeleteIdentityPool
+              - cognito-identity:GetIdentityPoolRoles
+              - cognito-identity:SetIdentityPoolRoles
+              - cognito-identity:ListTagsForResource
+              - cognito-identity:TagResource
+              - cognito-identity:UntagResource
+            Resource: !Sub 'arn:${AWS::Partition}:cognito-identity:${AWS::Region}:${AWS::AccountId}:identitypool/*'
+
+  productionCloudFormationExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-production-app-execution'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref productionApplicationDeploymentPolicy
+      Policies:
+        - PolicyName: ReadApplicationArtifacts
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${ProjectPrefix}/production/*'
+
+  productionPipelineExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-production-app-deploy'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateGitHubOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Ref ExistingGitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:production'
+      Policies:
+        - PolicyName: DeployApplication
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: CreateApplicationChangeSet
+                Effect: Allow
+                Action: cloudformation:CreateChangeSet
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-production/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-production-*/*'
+                Condition:
+                  ArnEquals:
+                    cloudformation:RoleArn: !GetAtt productionCloudFormationExecutionRole.Arn
+              - Sid: ApplicationStack
+                Effect: Allow
+                Action:
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:GetTemplate
+                  - cloudformation:GetTemplateSummary
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-production/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-production-*/*'
+              - Sid: PassOnlyCloudFormationRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt productionCloudFormationExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: cloudformation.amazonaws.com
+              - Sid: ArtifactBucketMetadata
+                Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                  - s3:GetBucketVersioning
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}'
+              - Sid: ListApplicationArtifacts
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}'
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - !Sub '${ProjectPrefix}/production'
+                      - !Sub '${ProjectPrefix}/production/*'
+              - Sid: ApplicationArtifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:AbortMultipartUpload
+                  - s3:ListMultipartUploadParts
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${ProjectPrefix}/production/*'
+
+  InfrastructureRuntimePermissionsBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectPrefix}-infra-runtime-boundary'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: [ ssm:GetParameter, ssm:PutParameter, ssm:DeleteParameter ]
+            Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slongdotexe/${!aws:PrincipalTag/DeploymentEnvironment}/cdn/*'
+          - Effect: Allow
+            Action: [ cloudfront-keyvaluestore:DescribeKeyValueStore, cloudfront-keyvaluestore:GetKey, cloudfront-keyvaluestore:PutKey, cloudfront-keyvaluestore:DeleteKey ]
+            Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:key-value-store/*'
+          - Effect: Allow
+            Action: [ logs:CreateLogStream, logs:PutLogEvents ]
+            Resource: !Sub 'arn:${AWS::Partition}:logs:us-east-1:${AWS::AccountId}:log-group:/aws/lambda/${ProjectPrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn-routing-configuration:*'
+
+  DnsDeploymentPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectPrefix}-dns-deployment-policy'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: acm:RequestCertificate
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: us-east-1
+                aws:RequestTag/Project: !Ref ProjectPrefix
+                aws:RequestTag/DeploymentEnvironment: '${aws:PrincipalTag/DeploymentEnvironment}'
+          - Effect: Allow
+            Action: [ acm:DescribeCertificate, acm:ListTagsForCertificate ]
+            Resource: !Sub 'arn:${AWS::Partition}:acm:us-east-1:${AWS::AccountId}:certificate/*'
+          - Effect: Allow
+            Action: [ acm:AddTagsToCertificate, acm:RemoveTagsFromCertificate, acm:DeleteCertificate ]
+            Resource: !Sub 'arn:${AWS::Partition}:acm:us-east-1:${AWS::AccountId}:certificate/*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/Project: !Ref ProjectPrefix
+                aws:ResourceTag/DeploymentEnvironment: '${aws:PrincipalTag/DeploymentEnvironment}'
+          - Effect: Allow
+            Action: [ route53:CreateHostedZone, route53:GetHostedZone, route53:ListHostedZones, route53:ListHostedZonesByName, route53:ListTagsForResource, route53:ChangeTagsForResource ]
+            Resource: '*'
+          - Effect: Allow
+            Action: route53:ChangeResourceRecordSets
+            Resource: !Sub 'arn:${AWS::Partition}:route53:::hostedzone/*'
+            Condition:
+              ForAllValues:StringLike:
+                route53:ChangeResourceRecordSetsNormalizedRecordNames: [ development.seanlong.me, '*.development.seanlong.me', '_*.development.seanlong.me' ]
+              ForAllValues:StringEquals:
+                route53:ChangeResourceRecordSetsRecordTypes: [ A, AAAA, CNAME ]
+              StringEquals:
+                aws:PrincipalTag/DeploymentEnvironment: [ development, ephemeral ]
+          - Effect: Allow
+            Action: route53:GetChange
+            Resource: !Sub 'arn:${AWS::Partition}:route53:::change/*'
+
+  CdnDeploymentPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectPrefix}-cdn-deployment-policy'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: cloudfront:CreateDistribution
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestTag/Project: !Ref ProjectPrefix
+                aws:RequestTag/DeploymentEnvironment: '${aws:PrincipalTag/DeploymentEnvironment}'
+          - Effect: Allow
+            Action: [ cloudfront:GetDistribution, cloudfront:GetDistributionConfig, cloudfront:ListTagsForResource ]
+            Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/*'
+          - Effect: Allow
+            Action: [ cloudfront:UpdateDistribution, cloudfront:DeleteDistribution, cloudfront:TagResource, cloudfront:UntagResource ]
+            Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/Project: !Ref ProjectPrefix
+                aws:ResourceTag/DeploymentEnvironment: '${aws:PrincipalTag/DeploymentEnvironment}'
+          - Effect: Allow
+            Action: [ cloudfront:CreateCachePolicy, cloudfront:GetCachePolicy, cloudfront:GetCachePolicyConfig, cloudfront:UpdateCachePolicy, cloudfront:DeleteCachePolicy, cloudfront:CreateOriginAccessControl, cloudfront:GetOriginAccessControl, cloudfront:UpdateOriginAccessControl, cloudfront:DeleteOriginAccessControl, cloudfront:CreateResponseHeadersPolicy, cloudfront:GetResponseHeadersPolicy, cloudfront:GetResponseHeadersPolicyConfig, cloudfront:UpdateResponseHeadersPolicy, cloudfront:DeleteResponseHeadersPolicy ]
+            Resource: '*'
+          - Effect: Allow
+            Action: [ cloudfront:CreateFunction, cloudfront:DescribeFunction, cloudfront:GetFunction, cloudfront:UpdateFunction, cloudfront:PublishFunction, cloudfront:DeleteFunction ]
+            Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:function/${ProjectPrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn-*'
+          - Effect: Allow
+            Action: cloudfront:CreateKeyValueStore
+            Resource: '*'
+          - Effect: Allow
+            Action: [ cloudfront:DescribeKeyValueStore, cloudfront:UpdateKeyValueStore, cloudfront:DeleteKeyValueStore, cloudfront-keyvaluestore:DescribeKeyValueStore ]
+            Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:key-value-store/*'
+          - Effect: Allow
+            Action: [ wafv2:CreateWebACL, wafv2:GetWebACL, wafv2:UpdateWebACL, wafv2:DeleteWebACL, wafv2:TagResource, wafv2:UntagResource, wafv2:ListTagsForResource, wafv2:PutLoggingConfiguration, wafv2:GetLoggingConfiguration, wafv2:DeleteLoggingConfiguration ]
+            Resource: !Sub 'arn:${AWS::Partition}:wafv2:us-east-1:${AWS::AccountId}:global/webacl/${ProjectPrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn-*/*'
+          - Effect: Allow
+            Action: [ logs:CreateLogGroup, logs:DeleteLogGroup, logs:PutRetentionPolicy, logs:DeleteRetentionPolicy, logs:TagResource, logs:UntagResource, logs:ListTagsForResource ]
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:logs:us-east-1:${AWS::AccountId}:log-group:/aws/lambda/${ProjectPrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn-*:*'
+              - !Sub 'arn:${AWS::Partition}:logs:us-east-1:${AWS::AccountId}:log-group:aws-waf-logs-${ProjectPrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn:*'
+          - Effect: Allow
+            Action: [ logs:DescribeLogGroups, logs:DescribeResourcePolicies, logs:PutResourcePolicy, logs:CreateLogDelivery, logs:UpdateLogDelivery, logs:DeleteLogDelivery, logs:GetLogDelivery, logs:ListLogDeliveries ]
+            Resource: '*'
+          - Effect: Allow
+            Action: iam:CreateServiceLinkedRole
+            Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/wafv2.amazonaws.com/AWSServiceRoleForWAFV2Logging'
+            Condition:
+              StringEquals:
+                iam:AWSServiceName: wafv2.amazonaws.com
+          - Effect: Allow
+            Action: [ iam:CreateRole, iam:PutRolePermissionsBoundary ]
+            Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn-RoutingConfigurationRole-*'
+            Condition:
+              ArnEquals:
+                iam:PermissionsBoundary: !Ref InfrastructureRuntimePermissionsBoundary
+              StringEquals:
+                aws:RequestTag/DeploymentEnvironment: '${aws:PrincipalTag/DeploymentEnvironment}'
+          - Effect: Allow
+            Action: [ iam:GetRole, iam:DeleteRole, iam:UpdateAssumeRolePolicy, iam:GetRolePolicy, iam:PutRolePolicy, iam:DeleteRolePolicy, iam:ListRolePolicies, iam:ListAttachedRolePolicies, iam:TagRole, iam:UntagRole ]
+            Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn-RoutingConfigurationRole-*'
+          - Effect: Allow
+            Action: iam:PassRole
+            Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn-RoutingConfigurationRole-*'
+            Condition:
+              StringEquals:
+                iam:PassedToService: lambda.amazonaws.com
+          - Effect: Allow
+            Action: [ lambda:CreateFunction, lambda:GetFunction, lambda:GetFunctionConfiguration, lambda:UpdateFunctionCode, lambda:UpdateFunctionConfiguration, lambda:DeleteFunction, lambda:InvokeFunction, lambda:ListTags, lambda:TagResource, lambda:UntagResource ]
+            Resource: !Sub 'arn:${AWS::Partition}:lambda:us-east-1:${AWS::AccountId}:function:${ProjectPrefix}-${!aws:PrincipalTag/DeploymentEnvironment}-cdn-routing-configuration'
+          - Effect: Allow
+            Action: [ cloudformation:ListExports, cloudformation:ListImports ]
+            Resource: '*'
+
+  developmentInfrastructureExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-development-infra-execution'
+      Tags:
+        - Key: DeploymentEnvironment
+          Value: development
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns: [ !Ref DnsDeploymentPolicy, !Ref CdnDeploymentPolicy ]
+      Policies:
+        - PolicyName: ReadArtifacts
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1/${ProjectPrefix}/development/infrastructure/*'
+
+  developmentInfrastructurePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-development-infra-deploy'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [ CreateGitHubOidcProvider, !Ref GitHubOidcProvider, !Ref ExistingGitHubOidcProviderArn ]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:development'
+      Policies:
+        - PolicyName: DeployInfrastructure
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: cloudformation:CreateChangeSet
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:us-east-1:${AWS::AccountId}:stack/${ProjectPrefix}-development-dns/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:us-east-1:${AWS::AccountId}:stack/${ProjectPrefix}-development-cdn/*'
+                Condition:
+                  ArnEquals:
+                    cloudformation:RoleArn: !GetAtt developmentInfrastructureExecutionRole.Arn
+              - Effect: Allow
+                Action: [ cloudformation:DescribeChangeSet, cloudformation:ExecuteChangeSet, cloudformation:DeleteChangeSet, cloudformation:DescribeStacks, cloudformation:DescribeStackEvents, cloudformation:GetTemplate, cloudformation:GetTemplateSummary ]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:us-east-1:${AWS::AccountId}:stack/${ProjectPrefix}-development-dns/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:us-east-1:${AWS::AccountId}:stack/${ProjectPrefix}-development-cdn/*'
+              - Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-development/*'
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt developmentInfrastructureExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: cloudformation.amazonaws.com
+              - Effect: Allow
+                Action: [ s3:GetBucketLocation, s3:GetBucketVersioning ]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1'
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1'
+                Condition:
+                  StringLike:
+                    s3:prefix: !Sub '${ProjectPrefix}/development/infrastructure/*'
+              - Effect: Allow
+                Action: [ s3:GetObject, s3:PutObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts ]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1/${ProjectPrefix}/development/infrastructure/*'
+  productionInfrastructureExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-production-infra-execution'
+      Tags:
+        - Key: DeploymentEnvironment
+          Value: production
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns: [ !Ref DnsDeploymentPolicy, !Ref CdnDeploymentPolicy ]
+      Policies:
+        - PolicyName: ReadArtifacts
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1/${ProjectPrefix}/production/infrastructure/*'
+  productionInfrastructurePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-production-infra-deploy'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [ CreateGitHubOidcProvider, !Ref GitHubOidcProvider, !Ref ExistingGitHubOidcProviderArn ]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:production'
+      Policies:
+        - PolicyName: DeployInfrastructure
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: cloudformation:CreateChangeSet
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:us-east-1:${AWS::AccountId}:stack/${ProjectPrefix}-production-dns/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:us-east-1:${AWS::AccountId}:stack/${ProjectPrefix}-production-cdn/*'
+                Condition:
+                  ArnEquals:
+                    cloudformation:RoleArn: !GetAtt productionInfrastructureExecutionRole.Arn
+              - Effect: Allow
+                Action: [ cloudformation:DescribeChangeSet, cloudformation:ExecuteChangeSet, cloudformation:DeleteChangeSet, cloudformation:DescribeStacks, cloudformation:DescribeStackEvents, cloudformation:GetTemplate, cloudformation:GetTemplateSummary ]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:us-east-1:${AWS::AccountId}:stack/${ProjectPrefix}-production-dns/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:us-east-1:${AWS::AccountId}:stack/${ProjectPrefix}-production-cdn/*'
+              - Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-production/*'
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt productionInfrastructureExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: cloudformation.amazonaws.com
+              - Effect: Allow
+                Action: [ s3:GetBucketLocation, s3:GetBucketVersioning ]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1'
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1'
+                Condition:
+                  StringLike:
+                    s3:prefix: !Sub '${ProjectPrefix}/production/infrastructure/*'
+              - Effect: Allow
+                Action: [ s3:GetObject, s3:PutObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts ]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1/${ProjectPrefix}/production/infrastructure/*'
+
+  PreviewRuntimePermissionsBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectPrefix}-preview-runtime-boundary'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: [s3:GetObject, s3:PutObject]
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-preview-cache-*/previews/pr-*/*'
+          - Effect: Allow
+            Action: s3:ListBucket
+            Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-preview-cache-*'
+            Condition:
+              StringLike:
+                s3:prefix: 'previews/pr-*/*'
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:UpdateItem]
+            Resource: !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectPrefix}-preview-cache-*'
+            Condition:
+              ForAllValues:StringLike:
+                dynamodb:LeadingKeys: 'previews/pr-*#tag#*'
+          - Effect: Allow
+            Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+            Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectPrefix}-pr-*:*'
+          - Effect: Allow
+            Action: ssm:GetParameter
+            Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slongdotexe/ephemeral/cdn/*'
+          - Effect: Allow
+            Action: [cloudfront-keyvaluestore:DescribeKeyValueStore, cloudfront-keyvaluestore:GetKey, cloudfront-keyvaluestore:PutKey, cloudfront-keyvaluestore:DeleteKey]
+            Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:key-value-store/*'
+          - Effect: Allow
+            Action: xray:PutTraceSegments
+            Resource: '*'
+
+  PreviewExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-preview-app-execution'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DeployPreview
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject]
+                Resource: !Sub '${Artifacts.Arn}/${ProjectPrefix}/preview/*'
+              - Effect: Allow
+                Action: [ssm:GetParameter, ssm:GetParameters]
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slongdotexe/ephemeral/cdn/*'
+              - Effect: Allow
+                Action: [iam:CreateRole, iam:PutRolePermissionsBoundary]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-pr-*-WebAppRole-*'
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-pr-*-PreviewRoutingRole-*'
+                Condition:
+                  ArnEquals:
+                    iam:PermissionsBoundary: !Ref PreviewRuntimePermissionsBoundary
+              - Effect: Allow
+                Action: [iam:GetRole, iam:DeleteRole, iam:UpdateAssumeRolePolicy, iam:GetRolePolicy, iam:PutRolePolicy, iam:DeleteRolePolicy, iam:ListRolePolicies, iam:ListAttachedRolePolicies, iam:TagRole, iam:UntagRole]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-pr-*-WebAppRole-*'
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-pr-*-PreviewRoutingRole-*'
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-pr-*-WebAppRole-*'
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProjectPrefix}-pr-*-PreviewRoutingRole-*'
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: lambda.amazonaws.com
+              - Effect: Allow
+                Action: [lambda:CreateWebFunction, lambda:GetWebFunction, lambda:DeleteWebFunction, lambda:CreateWebFunctionRevision, lambda:GetWebFunctionRevision, lambda:DeleteWebFunctionRevision, lambda:CreateWebFunctionEndpoint, lambda:GetWebFunctionEndpoint, lambda:UpdateWebFunctionEndpoint, lambda:DeleteWebFunctionEndpoint, lambda:GetResourcePolicy, lambda:PutResourcePolicy, lambda:DeleteResourcePolicy, lambda:ListTags, lambda:TagResource, lambda:UntagResource]
+                Resource: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:web-function/${ProjectPrefix}-pr-*'
+              - Effect: Allow
+                Action: [lambda:CreateFunction, lambda:GetFunction, lambda:GetFunctionConfiguration, lambda:UpdateFunctionCode, lambda:UpdateFunctionConfiguration, lambda:DeleteFunction, lambda:InvokeFunction, lambda:ListTags, lambda:TagResource, lambda:UntagResource]
+                Resource: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectPrefix}-pr-*-preview-routing'
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:DeleteLogGroup, logs:PutRetentionPolicy, logs:DeleteRetentionPolicy, logs:TagResource, logs:UntagResource, logs:ListTagsForResource]
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectPrefix}-pr-*:*'
+              - Effect: Allow
+                Action: [logs:DescribeLogGroups]
+                Resource: '*'
+
+  PreviewPipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-preview-app-deploy'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [CreateGitHubOidcProvider, !Ref GitHubOidcProvider, !Ref ExistingGitHubOidcProviderArn]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:preview'
+      Policies:
+        - PolicyName: DeployPreview
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [cloudformation:CreateChangeSet, cloudformation:DeleteStack]
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-pr-*/*'
+                Condition:
+                  ArnEquals:
+                    cloudformation:RoleArn: !GetAtt PreviewExecutionRole.Arn
+              - Effect: Allow
+                Action: [cloudformation:DescribeChangeSet, cloudformation:ExecuteChangeSet, cloudformation:DeleteChangeSet, cloudformation:DescribeStacks, cloudformation:DescribeStackEvents, cloudformation:GetTemplate, cloudformation:GetTemplateSummary]
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-pr-*/*'
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt PreviewExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: cloudformation.amazonaws.com
+              - Effect: Allow
+                Action: [s3:GetBucketLocation, s3:GetBucketVersioning]
+                Resource: !GetAtt Artifacts.Arn
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt Artifacts.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: !Sub '${ProjectPrefix}/preview*'
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts]
+                Resource: !Sub '${Artifacts.Arn}/${ProjectPrefix}/preview/*'
+
+  PreviewInfrastructureExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-preview-infra-execution'
+      Tags:
+        - Key: DeploymentEnvironment
+          Value: ephemeral
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns: [!Ref CdnDeploymentPolicy]
+      Policies:
+        - PolicyName: SharedPreviewInfrastructure
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub '${Artifacts.Arn}/${ProjectPrefix}/preview-infrastructure/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1/${ProjectPrefix}/preview-infrastructure/*'
+              - Effect: Allow
+                Action: [s3:CreateBucket, s3:DeleteBucket, s3:GetBucketLocation, s3:GetBucketPolicy, s3:PutBucketPolicy, s3:DeleteBucketPolicy, s3:GetEncryptionConfiguration, s3:PutEncryptionConfiguration, s3:GetBucketPublicAccessBlock, s3:PutBucketPublicAccessBlock, s3:GetBucketTagging, s3:PutBucketTagging, s3:GetBucketVersioning, s3:GetBucketAcl, s3:GetBucketOwnershipControls]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-preview-cache-*'
+              - Effect: Allow
+                Action: [dynamodb:CreateTable, dynamodb:UpdateTable, dynamodb:DeleteTable, dynamodb:DescribeTable, dynamodb:DescribeContinuousBackups, dynamodb:UpdateContinuousBackups, dynamodb:ListTagsOfResource, dynamodb:TagResource, dynamodb:UntagResource]
+                Resource: !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectPrefix}-preview-cache-*'
+              - Effect: Allow
+                Action: route53:ChangeResourceRecordSets
+                Resource: !Sub 'arn:${AWS::Partition}:route53:::hostedzone/*'
+                Condition:
+                  ForAllValues:StringEquals:
+                    route53:ChangeResourceRecordSetsNormalizedRecordNames: ['*.development.seanlong.me']
+                    route53:ChangeResourceRecordSetsRecordTypes: [A, AAAA]
+              - Effect: Allow
+                Action: route53:GetChange
+                Resource: !Sub 'arn:${AWS::Partition}:route53:::change/*'
+
+  PreviewInfrastructurePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-preview-infra-deploy'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [CreateGitHubOidcProvider, !Ref GitHubOidcProvider, !Ref ExistingGitHubOidcProviderArn]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:preview-infrastructure'
+      Policies:
+        - PolicyName: DeploySharedPreviewInfrastructure
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: cloudformation:CreateChangeSet
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-preview-cache/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:us-east-1:${AWS::AccountId}:stack/${ProjectPrefix}-ephemeral-cdn/*'
+                Condition:
+                  ArnEquals:
+                    cloudformation:RoleArn: !GetAtt PreviewInfrastructureExecutionRole.Arn
+              - Effect: Allow
+                Action: [cloudformation:DescribeChangeSet, cloudformation:ExecuteChangeSet, cloudformation:DeleteChangeSet, cloudformation:DescribeStacks, cloudformation:DescribeStackEvents, cloudformation:GetTemplate, cloudformation:GetTemplateSummary]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectPrefix}-preview-cache/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:us-east-1:${AWS::AccountId}:stack/${ProjectPrefix}-ephemeral-cdn/*'
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt PreviewInfrastructureExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: cloudformation.amazonaws.com
+              - Effect: Allow
+                Action: [s3:GetBucketLocation, s3:GetBucketVersioning]
+                Resource:
+                  - !GetAtt Artifacts.Arn
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1'
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource:
+                  - !GetAtt Artifacts.Arn
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1'
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - !Sub '${ProjectPrefix}/preview-infrastructure'
+                      - !Sub '${ProjectPrefix}/preview-infrastructure/*'
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts]
+                Resource:
+                  - !Sub '${Artifacts.Arn}/${ProjectPrefix}/preview-infrastructure/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1/${ProjectPrefix}/preview-infrastructure/*'
+
+Outputs:
+  PreviewInfrastructureDeployRoleArn:
+    Value: !GetAtt PreviewInfrastructurePipelineRole.Arn
+  PreviewInfrastructureExecutionRoleArn:
+    Value: !GetAtt PreviewInfrastructureExecutionRole.Arn
+  PreviewInfrastructureArtifactPrefix:
+    Value: !Sub '${ProjectPrefix}/preview-infrastructure'
+  PreviewDeployRoleArn:
+    Value: !GetAtt PreviewPipelineRole.Arn
+  PreviewExecutionRoleArn:
+    Value: !GetAtt PreviewExecutionRole.Arn
+  PreviewRuntimePermissionsBoundaryArn:
+    Value: !Ref PreviewRuntimePermissionsBoundary
+  PreviewArtifactPrefix:
+    Value: !Sub '${ProjectPrefix}/preview'
+  DevelopmentInfrastructureDeployRoleArn:
+    Value: !GetAtt developmentInfrastructurePipelineRole.Arn
+  DevelopmentInfrastructureExecutionRoleArn:
+    Value: !GetAtt developmentInfrastructureExecutionRole.Arn
+  InfrastructureRuntimePermissionsBoundaryArn:
+    Value: !Ref InfrastructureRuntimePermissionsBoundary
+  EdgeArtifactBucket:
+    Value: !Sub '${ProjectPrefix}-artifacts-${AWS::AccountId}-us-east-1'
+  ArtifactBucket:
+    Value: !Ref Artifacts
+  GitHubOidcProviderArn:
+    Value: !If [ CreateGitHubOidcProvider, !Ref GitHubOidcProvider, !Ref ExistingGitHubOidcProviderArn ]
+  DevelopmentPipelineExecutionRoleArn:
+    Value: !GetAtt developmentPipelineExecutionRole.Arn
+  ProductionPipelineExecutionRoleArn:
+    Value: !GetAtt productionPipelineExecutionRole.Arn
+  DevelopmentCloudFormationExecutionRoleArn:
+    Value: !GetAtt developmentCloudFormationExecutionRole.Arn
+  ProductionCloudFormationExecutionRoleArn:
+    Value: !GetAtt productionCloudFormationExecutionRole.Arn
+  DevelopmentRuntimePermissionsBoundaryArn:
+    Value: !Ref developmentRuntimePermissionsBoundary
+  ProductionRuntimePermissionsBoundaryArn:
+    Value: !Ref productionRuntimePermissionsBoundary
+  DevelopmentArtifactPrefix:
+    Value: !Sub ${ProjectPrefix}/development
+  ProductionArtifactPrefix:
+    Value: !Sub ${ProjectPrefix}/production
+  ProductionInfrastructureDeployRoleArn:
+    Value: !GetAtt productionInfrastructurePipelineRole.Arn
+  ProductionInfrastructureExecutionRoleArn:
+    Value: !GetAtt productionInfrastructureExecutionRole.Arn

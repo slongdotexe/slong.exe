@@ -1,0 +1,84 @@
+name: Deploy Application
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Mainline application target
+        type: choice
+        options: [development, production]
+        required: true
+      build_run_id:
+        description: Successful Build Application run ID
+        type: string
+        required: true
+      bootstrap:
+        description: Initial deployment only, before the CDN publishes its SSM parameter
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-application-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      TARGET: ${{ inputs.environment }}
+      APP_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      EXECUTION_ROLE: ${{ vars.AWS_CLOUDFORMATION_ROLE_ARN }}
+      ARTIFACT_BUCKET: ${{ vars.AWS_ARTIFACT_BUCKET }}
+      ARTIFACT_PREFIX: ${{ vars.AWS_ARTIFACT_PREFIX }}
+      AWS_PAGER: ""
+    steps:
+      - name: Download application artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: application
+          path: ${{ runner.temp }}
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Unpack deployment ZIP
+        run: unzip -q "$RUNNER_TEMP/application.zip" -d "$RUNNER_TEMP/application"
+
+      - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.APP_REGION }}
+
+      - name: Bootstrap application
+        if: ${{ inputs.bootstrap }}
+        working-directory: ${{ runner.temp }}/application
+        run: |
+          sam deploy --config-env "$TARGET-bootstrap" --region "$APP_REGION" \
+            --role-arn "$EXECUTION_ROLE" \
+            --s3-bucket "$ARTIFACT_BUCKET" --s3-prefix "$ARTIFACT_PREFIX"
+
+      - name: Deploy application
+        if: ${{ !inputs.bootstrap }}
+        working-directory: ${{ runner.temp }}/application
+        run: |
+          sam deploy --config-env "$TARGET" --region "$APP_REGION" \
+            --role-arn "$EXECUTION_ROLE" \
+            --s3-bucket "$ARTIFACT_BUCKET" --s3-prefix "$ARTIFACT_PREFIX"
+
+      - name: Summarize application outputs
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name "sam-nextjs-slongdotexe-$TARGET" \
+            --region "$APP_REGION" \
+            --query 'Stacks[0].Outputs' \
+            --output table \
+            >> "$GITHUB_STEP_SUMMARY"

@@ -1,4 +1,4 @@
-export default function CacheTagsDemo() {
+export default function Home() {
   return (
     <main className="mx-auto w-full flex-1 px-8 py-8 font-sans sm:px-10">
       <header className="mb-10">

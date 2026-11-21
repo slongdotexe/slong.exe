@@ -3,8 +3,7 @@
   "version": "0.0.2",
   "type": "module",
   "scripts": {
-    "test": "node templates/iam/scripts/validate-policies.mjs",
-    "deploy-bootstrap": ""
+    "test": "node templates/iam/scripts/validate-policies.mjs"
   },
   "devDependencies": {
     "yaml": "^2.8.1"

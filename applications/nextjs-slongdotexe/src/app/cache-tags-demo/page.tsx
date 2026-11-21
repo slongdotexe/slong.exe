@@ -1,27 +1,28 @@
-import { randomUUID } from "node:crypto";
-import { Suspense } from "react";
-import { cacheLife, cacheTag, refresh, updateTag } from "next/cache";
-import { connection } from "next/server";
+import { randomUUID } from 'node:crypto'
 
-const demoTag = "cache-component-demo";
+import { cacheLife, cacheTag, refresh, updateTag } from 'next/cache'
+import { connection } from 'next/server'
+import { Suspense } from 'react'
+
+const demoTag = 'cache-component-demo'
 
 async function invalidateSnapshot() {
-  "use server";
+  'use server'
 
-  updateTag(demoTag);
-  refresh();
+  updateTag(demoTag)
+  refresh()
 }
 
 async function CachedSnapshot() {
-  "use cache";
+  'use cache'
 
-  cacheLife({ stale: 30, revalidate: 60, expire: 300 });
-  cacheTag(demoTag);
+  cacheLife({ stale: 30, revalidate: 60, expire: 300 })
+  cacheTag(demoTag)
 
   const snapshot = {
     id: randomUUID(),
     generatedAt: new Date().toISOString(),
-  };
+  }
 
   return (
     <section className="border-t-2 border-emerald-600 py-6">
@@ -43,14 +44,14 @@ async function CachedSnapshot() {
         </div>
       </dl>
     </section>
-  );
+  )
 }
 
 async function CacheDemo() {
-  await connection();
+  await connection()
 
-  const requestedAt = new Date().toISOString();
-  const requestId = randomUUID();
+  const requestedAt = new Date().toISOString()
+  const requestId = randomUUID()
 
   return (
     <>
@@ -81,21 +82,19 @@ async function CacheDemo() {
         </button>
       </form>
     </>
-  );
+  )
 }
 
 export default function CacheTagsDemo() {
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-16 font-sans sm:px-10">
       <header className="mb-10">
-        <p className="mb-3 font-mono text-sm text-emerald-700 dark:text-emerald-400">
-          slongdotexe / Next.js
-        </p>
+        <p className="mb-3 font-mono text-sm text-emerald-700 dark:text-emerald-400">slongdotexe / Next.js</p>
         <h1 className="text-3xl font-semibold">Cache Components</h1>
       </header>
       <Suspense fallback={<p role="status">Loading cache snapshot...</p>}>
         <CacheDemo />
       </Suspense>
     </main>
-  );
+  )
 }

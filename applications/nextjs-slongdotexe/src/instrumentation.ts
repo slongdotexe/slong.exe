@@ -2,10 +2,15 @@ import type { Instrumentation } from 'next'
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const configured = process.env.OTEL_NODE_DISABLED_INSTRUMENTATIONS?.trim()
+    const disabled = configured
+      ? configured
+          .split(',')
+          .map((name) => name.trim())
+          .filter(Boolean)
+      : ['fs', 'dns']
+    process.env.OTEL_NODE_DISABLED_INSTRUMENTATIONS = [...new Set([...disabled, 'http', 'undici'])].join(',')
     await import('@aws/aws-distro-opentelemetry-node-autoinstrumentation/register')
-    const { createRequire } = await import('node:module')
-    const require = createRequire(import.meta.url)
-    require('node:http')
   }
 }
 

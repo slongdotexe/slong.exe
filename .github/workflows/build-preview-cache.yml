@@ -36,10 +36,10 @@ jobs:
         run: yarn install --immutable
 
       - name: Build preview cache infrastructure
-        run: yarn workspace @slongdotexe/infra-common build:cache
+        run: yarn workspace @slongdotexe/nextjs-slongdotexe build:cache
 
       - name: Create deployment ZIP
-        working-directory: infra/common/out/cache
+        working-directory: applications/nextjs-slongdotexe/infra/cache/out
         run: zip --recurse-paths --symlinks "$RUNNER_TEMP/preview-cache.zip" .
 
       - name: Upload preview cache artifact

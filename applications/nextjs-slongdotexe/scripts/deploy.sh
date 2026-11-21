@@ -45,7 +45,7 @@ APP=applications/nextjs-slongdotexe
 ARTIFACT="$APP/infra/application/out/web-function"
 export AWS_PAGER=''
 
-yarn workspace @slongdotexe/infra-common build:cache "$PWD/$APP/infra/application/out/cache"
+yarn workspace @slongdotexe/nextjs-slongdotexe build:cache "$PWD/$APP/infra/application/out/cache"
 node "$SCRIPT_DIR/build-preview-handler.mts"
 if ! command -v sam >/dev/null 2>&1; then
   printf "ERROR: Required command 'sam' is not installed or not on PATH.\n" >&2

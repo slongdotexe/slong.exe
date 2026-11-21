@@ -5,6 +5,12 @@ ENVIRONMENT=''
 PROFILE=slongdotexe
 STACK_NAME=''
 DOMAIN_NAME=''
+DNS_ENVIRONMENT=''
+CREATE_HOSTED_ZONE=false
+INCLUDE_WILDCARD=false
+REGION=us-east-1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export AWS_PAGER=''
 
 usage() {
   printf 'Usage: bash %s --environment development|production|ephemeral [--profile PROFILE] [--stack-name NAME] [--domain-name DOMAIN]\n' "$0"
@@ -40,8 +46,6 @@ if [[ "$ENVIRONMENT" == ephemeral ]]; then
   DNS_ENVIRONMENT=development
 fi
 STACK_NAME="${STACK_NAME:-sam-nextjs-slongdotexe-${DNS_ENVIRONMENT}-dns}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export AWS_PAGER=''
 
 case "$ENVIRONMENT" in
   development|ephemeral)
@@ -65,12 +69,12 @@ case "$ENVIRONMENT" in
 esac
 
 aws cloudformation deploy \
-  --template-file "$SCRIPT_DIR/../template.yaml" \
-  --stack-name "$STACK_NAME" --region us-east-1 --profile "$PROFILE" \
+  --template-file "$SCRIPT_DIR/../templates/dns-certificates/template.yaml" \
+  --stack-name "$STACK_NAME" --region "$REGION" --profile "$PROFILE" \
   --no-fail-on-empty-changeset \
   --parameter-overrides "DomainName=$DOMAIN_NAME" "CreateHostedZone=$CREATE_HOSTED_ZONE" \
     "IncludeWildcard=$INCLUDE_WILDCARD"
 
 aws cloudformation describe-stacks \
-  --stack-name "$STACK_NAME" --region us-east-1 --profile "$PROFILE" \
+  --stack-name "$STACK_NAME" --region "$REGION" --profile "$PROFILE" \
   --query 'Stacks[0].Outputs' --output table

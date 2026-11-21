@@ -3,8 +3,8 @@
   "version": "0.0.2",
   "type": "module",
   "scripts": {
-    "build:cache": "node build.mts cache",
-    "test": "node templates/iam/scripts/validate-policies.mjs"
+    "test": "node templates/iam/scripts/validate-policies.mjs",
+    "deploy-bootstrap": ""
   },
   "devDependencies": {
     "yaml": "^2.8.1"

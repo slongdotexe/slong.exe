@@ -55,7 +55,7 @@ jobs:
 
       - name: Build cache infrastructure
         run: >-
-          yarn workspace @slongdotexe/infra-common build:cache
+          yarn workspace @slongdotexe/nextjs-slongdotexe build:cache
           "$PWD/applications/nextjs-slongdotexe/infra/application/out/cache"
 
       - name: Build preview registration handler

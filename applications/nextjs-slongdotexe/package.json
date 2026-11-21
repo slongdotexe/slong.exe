@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:cache": "node scripts/build-cache-artifact.mts",
     "build:cdn": "node infra/cdn-cloudfront/scripts/build-cloudfront-handler.mts && node infra/cdn-cloudfront/scripts/build-preview-handler.mts",
     "test": "node --test src/cache/*.test.mjs infra/cdn-cloudfront/scripts/*.test.mjs",
     "typecheck:cdn": "tsc --project infra/tsconfig.json",
@@ -34,6 +35,8 @@
     "esbuild": "^0.27.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "eslint-plugin-prettier": "^5.5.7",
+    "prettier": "^3.10.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "yaml": "^2.8.1"

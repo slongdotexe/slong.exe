@@ -7,9 +7,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
-import { buildCacheArtifact } from "../../../../infra/common/build.mts";
+import { buildCacheArtifact } from "../../scripts/build-cache-artifact.mts";
 
-test("cache packaging is local and independent of the application workspace", async (context) => {
+test("app-owned cache packaging does not package a Web Function", async (context) => {
   const directory = await mkdtemp(join(tmpdir(), "application-cache-"));
   context.after(() => rm(directory, { recursive: true, force: true }));
   await buildCacheArtifact(pathToFileURL(directory + "/"));
@@ -25,8 +25,7 @@ test("cache build CLI writes to the consumer's requested directory", async (cont
   const build = spawnSync(
     process.execPath,
     [
-      new URL("../../../../infra/common/build.mts", import.meta.url).pathname,
-      "cache",
+      new URL("../../scripts/build-cache-artifact.mts", import.meta.url).pathname,
       directory,
     ],
     { encoding: "utf8" },

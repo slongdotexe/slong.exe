@@ -1,0 +1,16 @@
+{
+  "overrides": [
+    {
+      "files": "**/*.{js,jsx,cjs,mjs,ts,tsx,cts,mts}",
+      "options": {
+        "bracketSpacing": true,
+        "bracketSameLine": false,
+        "printWidth": 120,
+        "semi": false,
+        "singleQuote": true,
+        "trailingComma": "all",
+        "endOfLine": "auto"
+      }
+    }
+  ]
+}

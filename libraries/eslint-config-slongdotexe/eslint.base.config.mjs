@@ -4,12 +4,22 @@ import Shopify from "@shopify/eslint-plugin";
 import eslintConfigPrettier from "eslint-config-prettier";
 import eslintComments from "eslint-plugin-eslint-comments";
 import Import from "eslint-plugin-import";
+import prettier from "eslint-plugin-prettier";
 import globals from "globals";
 import typescriptEslint from "typescript-eslint";
 
 const typescriptFiles = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
 
 export default defineConfig([
+  {
+    ignores: [
+      "**/node_modules/**",
+      "**/out/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.next/**",
+    ],
+  },
   js.configs.recommended,
   Import.flatConfigs.recommended,
   {
@@ -112,6 +122,13 @@ export default defineConfig([
     },
   },
   eslintConfigPrettier,
+  {
+    files: ["**/*.{js,jsx,cjs,mjs,ts,tsx,cts,mts}"],
+    plugins: {
+      prettier,
+    },
+    rules: {
+      "prettier/prettier": "error",
+    },
+  },
 ]);
-
-const _something = "";

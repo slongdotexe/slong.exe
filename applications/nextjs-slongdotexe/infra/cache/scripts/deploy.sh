@@ -29,7 +29,7 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export AWS_PAGER=''
-node "$SCRIPT_DIR/../../../build.mts" cache
-sam deploy --template-file "$SCRIPT_DIR/../../../out/cache/template.yaml" \
+node "$SCRIPT_DIR/../../../scripts/build-cache-artifact.mts"
+sam deploy --template-file "$SCRIPT_DIR/../out/template.yaml" \
   --config-file "$SCRIPT_DIR/../samconfig.toml" --config-env preview \
   --profile "$PROFILE" --region "$REGION"

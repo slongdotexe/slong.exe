@@ -1,8 +1,8 @@
-import baseConfig from "@slongdotexe/eslint-config/base";
+import baseConfig from '@slongdotexe/eslint-config/base'
 
 export default [
   {
-    ignores: ["node_modules", "out", "dist"],
+    ignores: ['node_modules', 'out', 'dist'],
   },
   ...baseConfig,
-];
+]

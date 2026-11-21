@@ -3,123 +3,121 @@ import type {
   CloudFormationCustomResourceDeleteEvent,
   CloudFormationCustomResourceEvent,
   CloudFormationCustomResourceUpdateEvent,
-} from "aws-lambda";
+} from 'aws-lambda'
 
 export interface RouteProperties {
-  StoreArn: string;
-  Hostname: string;
-  DomainName: string;
-  RevisionId: string;
+  StoreArn: string
+  Hostname: string
+  DomainName: string
+  RevisionId: string
 }
 
 export interface PreviewProperties {
-  ParameterPrefix: string;
-  PreviewName: string;
-  DomainName: string;
-  RevisionId: string;
+  ParameterPrefix: string
+  PreviewName: string
+  DomainName: string
+  RevisionId: string
 }
 
 export interface ParameterProperties {
-  TargetRegion: string;
-  ParameterPrefix: string;
-  DistributionId: string;
-  StoreArn?: string;
-  DomainName?: string;
+  TargetRegion: string
+  ParameterPrefix: string
+  DistributionId: string
+  StoreArn?: string
+  DomainName?: string
 }
 
-type PropertiesEvent<
-  Event extends CloudFormationCustomResourceEvent,
-  Properties,
-> = Omit<Event, "ResourceProperties" | "OldResourceProperties"> & {
-  ResourceProperties: Properties;
-};
+type PropertiesEvent<Event extends CloudFormationCustomResourceEvent, Properties> = Omit<
+  Event,
+  'ResourceProperties' | 'OldResourceProperties'
+> & {
+  ResourceProperties: Properties
+}
 
 export type ResourceEvent<Properties = RouteProperties> =
   | PropertiesEvent<CloudFormationCustomResourceCreateEvent, Properties>
   | (PropertiesEvent<CloudFormationCustomResourceUpdateEvent, Properties> & {
-      OldResourceProperties: Properties;
+      OldResourceProperties: Properties
     })
-  | PropertiesEvent<CloudFormationCustomResourceDeleteEvent, Properties>;
+  | PropertiesEvent<CloudFormationCustomResourceDeleteEvent, Properties>
 
 export interface PreviewRoute {
-  domainName: string;
-  revisionId: string;
-  ownerId: string;
+  domainName: string
+  revisionId: string
+  ownerId: string
 }
 
-export function parseRouteProperties(
-  value: unknown,
-): RouteProperties | PreviewProperties {
+export function parseRouteProperties(value: unknown): RouteProperties | PreviewProperties {
   if (
-    typeof value !== "object" ||
+    typeof value !== 'object' ||
     value === null ||
-    !("DomainName" in value) ||
-    typeof value.DomainName !== "string" ||
-    !("RevisionId" in value) ||
-    typeof value.RevisionId !== "string"
+    !('DomainName' in value) ||
+    typeof value.DomainName !== 'string' ||
+    !('RevisionId' in value) ||
+    typeof value.RevisionId !== 'string'
   )
-    throw new Error("Invalid preview route properties");
-  if ("ParameterPrefix" in value) {
+    throw new Error('Invalid preview route properties')
+  if ('ParameterPrefix' in value) {
     if (
-      typeof value.ParameterPrefix !== "string" ||
-      !("PreviewName" in value) ||
-      typeof value.PreviewName !== "string"
+      typeof value.ParameterPrefix !== 'string' ||
+      !('PreviewName' in value) ||
+      typeof value.PreviewName !== 'string'
     ) {
-      throw new Error("Invalid preview route properties");
+      throw new Error('Invalid preview route properties')
     }
     return {
       ParameterPrefix: value.ParameterPrefix,
       PreviewName: value.PreviewName,
       DomainName: value.DomainName,
       RevisionId: value.RevisionId,
-    };
+    }
   }
   if (
-    !("StoreArn" in value) ||
-    typeof value.StoreArn !== "string" ||
-    !("Hostname" in value) ||
-    typeof value.Hostname !== "string"
+    !('StoreArn' in value) ||
+    typeof value.StoreArn !== 'string' ||
+    !('Hostname' in value) ||
+    typeof value.Hostname !== 'string'
   ) {
-    throw new Error("Invalid preview route properties");
+    throw new Error('Invalid preview route properties')
   }
   return {
     StoreArn: value.StoreArn,
     Hostname: value.Hostname,
     DomainName: value.DomainName,
     RevisionId: value.RevisionId,
-  };
+  }
 }
 
 export function parseParameterProperties(value: unknown): ParameterProperties {
   if (
-    typeof value !== "object" ||
+    typeof value !== 'object' ||
     value === null ||
-    !("TargetRegion" in value) ||
-    typeof value.TargetRegion !== "string" ||
-    !("ParameterPrefix" in value) ||
-    typeof value.ParameterPrefix !== "string" ||
-    !("DistributionId" in value) ||
-    typeof value.DistributionId !== "string"
+    !('TargetRegion' in value) ||
+    typeof value.TargetRegion !== 'string' ||
+    !('ParameterPrefix' in value) ||
+    typeof value.ParameterPrefix !== 'string' ||
+    !('DistributionId' in value) ||
+    typeof value.DistributionId !== 'string'
   )
-    throw new Error("Invalid CDN parameter properties");
+    throw new Error('Invalid CDN parameter properties')
   const properties: ParameterProperties = {
     TargetRegion: value.TargetRegion,
     ParameterPrefix: value.ParameterPrefix,
     DistributionId: value.DistributionId,
-  };
-  if ("StoreArn" in value || "DomainName" in value) {
+  }
+  if ('StoreArn' in value || 'DomainName' in value) {
     if (
-      !("StoreArn" in value) ||
-      typeof value.StoreArn !== "string" ||
-      !("DomainName" in value) ||
-      typeof value.DomainName !== "string"
+      !('StoreArn' in value) ||
+      typeof value.StoreArn !== 'string' ||
+      !('DomainName' in value) ||
+      typeof value.DomainName !== 'string'
     )
-      throw new Error("Invalid preview parameter properties");
+      throw new Error('Invalid preview parameter properties')
     return {
       ...properties,
       StoreArn: value.StoreArn,
       DomainName: value.DomainName,
-    };
+    }
   }
-  return properties;
+  return properties
 }

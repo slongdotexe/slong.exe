@@ -1,5 +1,8 @@
 {
   "eslint.validate": ["javascript", "javascriptreact", "typescript", "typescriptreact"],
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
   "aws.cloudformation.diagnostics.cfnLint.path": "/opt/homebrew/bin/cfn-lint",
   "files.associations": {
     "**/applications/*/template*.yaml": "cloudformation",

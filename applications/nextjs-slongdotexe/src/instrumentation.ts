@@ -1,12 +1,20 @@
 import type { Instrumentation } from 'next'
 
 export async function register() {
-  if (process.env.NEXT_RUNTIME === 'nodejs') {
-    await import('@aws/aws-distro-opentelemetry-node-autoinstrumentation/register')
-    const { createRequire } = await import('node:module')
-    const require = createRequire(import.meta.url)
-    require('node:http')
-  }
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return
+
+  const configured = process.env.OTEL_NODE_DISABLED_INSTRUMENTATIONS?.trim()
+  const disabled = configured
+    ? configured
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean)
+    : ['fs', 'dns']
+  const finalDisabled = [...disabled, 'http']
+
+  console.log({ message: 'Packages disabled for ADOT instrumentation', disabled: finalDisabled })
+  process.env.OTEL_NODE_DISABLED_INSTRUMENTATIONS = [...new Set(finalDisabled)].join(',')
+  await import('@aws/aws-distro-opentelemetry-node-autoinstrumentation/register')
 }
 
 export const onRequestError: Instrumentation.onRequestError = async (error, request, context) => {

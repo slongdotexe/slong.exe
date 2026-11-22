@@ -9,7 +9,7 @@ export async function register() {
           .map((name) => name.trim())
           .filter(Boolean)
       : ['fs', 'dns']
-    process.env.OTEL_NODE_DISABLED_INSTRUMENTATIONS = [...new Set([...disabled, 'http', 'undici'])].join(',')
+    process.env.OTEL_NODE_DISABLED_INSTRUMENTATIONS = [...new Set([...disabled, 'http'])].join(',')
     await import('@aws/aws-distro-opentelemetry-node-autoinstrumentation/register')
   }
 }

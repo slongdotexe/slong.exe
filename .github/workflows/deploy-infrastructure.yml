@@ -10,6 +10,12 @@ on:
         type: choice
         options: [development, production, preview-infrastructure]
         required: true
+  workflow_call:
+    inputs:
+      environment:
+        description: CDN target
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -105,7 +111,7 @@ jobs:
       - name: Summarize application authorization follow-up
         if: inputs.environment != 'preview-infrastructure'
         run: |
-          printf 'Run Manual: Deploy Application with bootstrap disabled to resolve the CDN parameter and update origin authorization.\n' \
+          printf 'If the distribution ID changed, run Manual: Deploy Application with bootstrap enabled, then disabled, to recreate origin authorization. This temporarily removes CloudFront access.\n' \
           >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize CDN outputs

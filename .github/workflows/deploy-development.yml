@@ -1,0 +1,33 @@
+name: "CD: Deploy Development"
+run-name: >-
+  CD: Deploy Development | ${{ github.sha }}
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-development
+  cancel-in-progress: false
+
+jobs:
+  application:
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    uses: ./.github/workflows/deploy-application.yml
+    with:
+      environment: development
+
+  cdn:
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    uses: ./.github/workflows/deploy-infrastructure.yml
+    with:
+      environment: development

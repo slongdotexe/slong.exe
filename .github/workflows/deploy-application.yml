@@ -14,6 +14,16 @@ on:
         description: Initial deployment only, before the CDN publishes its SSM parameter
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      environment:
+        description: Mainline application target
+        type: string
+        required: true
+      bootstrap:
+        description: Initial deployment only, before the CDN publishes its SSM parameter
+        type: boolean
+        default: false
 
 permissions:
   contents: read

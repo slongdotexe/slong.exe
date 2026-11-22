@@ -1098,6 +1098,9 @@ Resources:
                 Action: cloudformation:CreateChangeSet
                 Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31'
               - Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ApplicationResourcePrefix}-pr-*/*'
+              - Effect: Allow
                 Action: [s3:GetObject, s3:GetObjectVersion]
                 Resource: !Sub 'arn:${AWS::Partition}:s3:::${Artifacts}/${RepositoryPrefix}/preview/*'
               - Effect: Allow
